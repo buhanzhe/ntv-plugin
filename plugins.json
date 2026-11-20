@@ -57,9 +57,9 @@
         {
           "file": "bl.jar",
           "url": "https://github.com/buhanzhe/ntv-plugin/releases/download/v1.0.0/bl.jar",
-          "sha256": "99423529ef66cbfb32a993d3dd62c661eae4a70127a50ec253dbe82775a37ecc",
-          "bytes": 593411,
-          "version": "5",
+          "sha256": "0bd66a3e1f8ef5e0f751725d606e3003488926d149283f2acc0b617f3531bb79",
+          "bytes": 636169,
+          "version": "14",
           "minSdk": 14,
           "abis": []
         }

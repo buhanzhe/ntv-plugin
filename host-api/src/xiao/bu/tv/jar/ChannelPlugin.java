@@ -22,6 +22,11 @@ public interface ChannelPlugin {
         // The value is the host's okhttp3.OkHttpClient; keep baseline API-1 builds transport-free.
         Object httpClient();
     }
+    /** Optional access to the host's fullscreen preference. */
+    interface FullscreenHost extends NativeHost {
+        boolean isFullscreenEnabled();
+        void setFullscreenEnabled(boolean enabled);
+    }
     interface VodHost extends NativeHost {
         void playVod(String url, JSONObject headers);
         JSONObject python(JSONObject request) throws Exception;
