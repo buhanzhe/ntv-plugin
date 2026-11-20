@@ -83,7 +83,8 @@ def prepare(tag, output):
         entries[plugin] = {"id": plugin, "name": name, "kind": kind, "artifacts": versions}
     for filename, source in assets.items():
         shutil.copyfile(source, output / filename)
-    write_json(output / "plugins.json", {"schema": 1, "release": tag, "plugins": list(entries.values())})
+    catalog = [entry for entry in entries.values() if entry["kind"] not in {"radio-ui", "archive", "tv-ui"}]
+    write_json(output / "plugins.json", {"schema": 1, "release": tag, "plugins": catalog})
     styles = []
     for style in ("classic", "optical"):
         entry = entries["radio-" + style]
@@ -106,7 +107,7 @@ def prepare(tag, output):
                    + [plugin + ".m3u" for plugin, entry in entries.items() if entry["kind"] == "channel"])
     sums = "".join(f"{digest(output / name)}  {name}\n" for name in names)
     (output / "SHA256SUMS").write_bytes(sums.encode("ascii"))
-    print(f"Prepared {tag} with {len(assets)} plugin files and {len(entries)} catalog entries")
+    print(f"Prepared {tag} with {len(assets)} plugin files and {len(catalog)} catalog entries")
 
 
 if __name__ == "__main__":
