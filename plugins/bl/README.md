@@ -8,9 +8,9 @@ BL 将用户提供的 BBLL 1.5.2 界面资源、布局层次与 newBV 的 Web AP
 
 在线订阅：
 
-https://github.com/buhanzhe/ntv-plugin/releases/latest/download/bl.m3u
+https://raw.githubusercontent.com/buhanzhe/NativeWasmTv/master/plugins/bl/dist/example.m3u
 
-发布的 `bl.m3u` 包含固定版本的 HTTPS JAR 地址和 SHA-256。宿主下载、校验并缓存 DEX JAR。
+`dist/example.m3u` 包含 HTTPS JAR 地址及 SHA-256。宿主下载、校验并缓存 DEX JAR。发布的订阅固定 JAR 所在的 Git 提交，避免 CDN 新旧缓存造成哈希不匹配。
 
 ## 兼容目标
 
@@ -22,7 +22,9 @@ https://github.com/buhanzhe/ntv-plugin/releases/latest/download/bl.m3u
 | Android 4.0 实测 | 设备未连接，尚未完成真机验证；编译通过不等于全部 ROM、解码器都已经验证 |
 | WebView | 完全不依赖 WebView，没有最低 WebView 版本要求 |
 | API 14–15 播放 | `BlSystemPlayer`，只引用 API 14 的平台 MediaPlayer；视频经共享 OkHttp 的本机代理输入 |
-| API 16+ 播放 | Exo core 2.9.6 通过宿主 OkHttp 合并 DASH 音视频。DASH 使用桌面 Web 请求头，断流时从已读位置切到备用 CDN，再尝试其他可用音轨或画质。兼容回退在播放器内提示，播放失败时可查看错误详情 |
+| API 16+ 播放 | Exo core 2.10.8 通过宿主 OkHttp 合并 DASH 音视频。DASH 使用桌面 Web 请求头，断流时从已读位置切到备用 CDN。点播媒体读取失败可刷新播放地址并恢复进度。Hi-Res FLAC 有软件解码路径，杜比音轨使用设备的解码或直通能力 |
+
+BL 媒体边下边播，请求和本机代理响应均禁止磁盘缓存。DASH 压缩音视频共用 8 MiB 缓冲目标，优先按字节限流。IJK 播放队列目标为 2 MiB。
 | ABI | JAR 不包含 `.so`；IJK 播放取决于宿主 APK 与设备 ABI 匹配。平台播放无需 JAR 携带原生库 |
 
 没有直接打包 newBV 的 Compose/Media3 主应用，也没有把 BBLL 的 Activity 搬进 JAR。平台播放适配器特意避免 IJK `AndroidMediaPlayer` 中 API 16 `OnTimedTextListener` 的引用。
@@ -111,7 +113,7 @@ python plugins/bl/build.py --sdk D:/android/sdk --java-home C:/path/to/jdk8
 也支持新版 JDK：自动使用 `javac --release 8`，避免 Java 9 ByteBuffer 方法泄漏导致 Android 7.1 直播弹幕崩溃。
 `verify_artifact.py` 会检查最终 DEX 中的方法描述符；本轮发布 JAR 使用 JDK 8 构建。
 
-构建输出 `dist/bl.jar` 和 `dist/bl.sha256`。仓库的发布脚本根据 JAR 生成 `bl.m3u`。宿主接口采用 API 1 的可选扩展。插件可使用 M3U 查询参数 `apiOrigin`、`passportOrigin`、`liveOrigin` 指向本地测试接口。正式订阅使用公开站点接口。
+输出 `dist/bl.jar`、`dist/bl.sha256`、`dist/example.m3u`。宿主接口为 API 1 的可选扩展，既有 Folia BrowserHost/DirectoryHost 不变。插件可使用 M3U 查询参数 `apiOrigin`、`passportOrigin`、`liveOrigin` 指向本地测试接口；正式订阅不包含这些参数。
 
 ## 重复测试与诊断验证
 
