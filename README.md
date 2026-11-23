@@ -3,7 +3,7 @@
 此仓库维护 nTv 的频道 JAR、Python 运行时、Ku9 脚本、电台界面和 TVBus 打包工具。宿主从 GitHub Release 获取清单，并按设备架构和 Android 版本选择安装包。
 
 - 在线清单和产物 · [最新 Release](https://github.com/buhanzhe/ntv-plugin/releases/latest) · [plugins.json](https://github.com/buhanzhe/ntv-plugin/releases/latest/download/plugins.json)
-- 频道 · [TVBox](plugins/tvbox/README.md) · [BL](plugins/bl/README.md) · [Folia](plugins/folia-full/README.md)
+- 频道 · [文件浏览](plugins/file-browser/README.md) · [TVBox](plugins/tvbox/README.md) · [BL](plugins/bl/README.md) · [Folia](plugins/folia-full/README.md)
 - 运行时 · [Python 和 Ku9](plugins/python/README.md)
 - 外部引擎 · [TVBus 打包](plugins/tvbus/README.md)
 

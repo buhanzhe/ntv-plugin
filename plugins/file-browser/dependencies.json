@@ -1,0 +1,18 @@
+{
+  "jcifs-ng.jar": {
+    "maven": "eu/agno3/jcifs/jcifs-ng/2.1.10/jcifs-ng-2.1.10.jar",
+    "sha256": "1940332a416644b3b464335d0e0fb12530fb2c1e4cfb57e7d3339b46b2f0af48"
+  },
+  "slf4j-api.jar": {
+    "maven": "org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar",
+    "sha256": "d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0"
+  },
+  "slf4j-nop.jar": {
+    "maven": "org/slf4j/slf4j-nop/1.7.36/slf4j-nop-1.7.36.jar",
+    "sha256": "c214958b07816cb4412b30c7bdbd4308ffdc6ba2a83767b8f3a9229cbd9274d6"
+  },
+  "bcprov.jar": {
+    "maven": "org/bouncycastle/bcprov-jdk18on/1.76/bcprov-jdk18on-1.76.jar",
+    "sha256": "fda85d777aaae168015860b23a77cad9b8d3a1d5c904fda875313427bd560179"
+  }
+}

@@ -1,0 +1,21 @@
+File Browser is an nTv native channel plugin. Original code is GPL-3.0-only,
+as licensed by the repository's LICENSE and COPYRIGHT.md.
+
+Third-party library sources (versions and original artifact SHA-256 in dependencies.json):
+ - jcifs-ng 2.1.10, AgNO3 GmbH & Co. KG and jCIFS contributors, LGPL-2.1-or-later.
+   Source: https://github.com/AgNO3/jcifs-ng/tree/jcifs-ng-2.1.10
+ - SLF4J API / NOP 1.7.36, QOS.ch, MIT.
+   Source: https://github.com/qos-ch/slf4j/tree/v_1.7.36
+ - Bouncy Castle 1.76, The Legion of the Bouncy Castle Inc., MIT.
+   Source: https://github.com/bcgit/bc-java/tree/r1rv76
+License texts accompany the plugin. Build script permits rebuilding/relinking
+with replacement dependency artifacts (update dependencies.json accordingly).
+
+Android compatibility modifications (2026-11-23): backport.py redirects
+AutoCloseable to java.io.Closeable and Objects / StandardCharsets to the
+plugin's equivalent helpers. Original downloaded artifacts remain unchanged;
+the transformed binary is generated at build time. All modification sources
+and build instructions are in plugins/file-browser in the nTv source tree.
+The Bouncy Castle package is relocated under xiao.bu.channel.files.crypto.bc
+to avoid Android's built-in BC classes. SmbCryptoProvider supplies a private
+MD4 MessageDigest adapter for NTLM; no process-wide provider is installed.

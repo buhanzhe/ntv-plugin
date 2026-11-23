@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RELEASES = "https://github.com/buhanzhe/ntv-plugin/releases/"
 
 PLUGINS = [
+    ("file-browser", "文件浏览", "channel", ["file-browser/dist/file-browser.jar"]),
     ("tvbox", "TVBox", "channel", ["tvbox/dist/tvbox.jar"]),
     ("python", "Python 运行时", "python", ["python/dist/python-arm32.jar", "python/dist/python-arm64.jar"]),
     ("bl", "BL 哔哩哔哩", "channel", ["bl/dist/bl.jar"]),
