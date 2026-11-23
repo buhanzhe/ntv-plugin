@@ -1,0 +1,11 @@
+#EXTM3U
+#EXTINF:-1 group-title="插件",文件浏览
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/1d2a991d7ff38e45e5cc1eb6156b045dc19d291a/plugins/file-browser/dist/file-browser.jar?sha256=1a45fa94d7b4372ba9f2af888ae470fd9ed520398ac2e6586ff163fc42be2ed4
+#EXTINF:-1 group-title="插件",TVBox
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/1d2a991d7ff38e45e5cc1eb6156b045dc19d291a/plugins/tvbox/dist/tvbox.jar?sha256=ae2a4db86e7d4734e855144ff131070a457a127275ee3ea07fb72439eca0b3c8&url=http%3A%2F%2Fwww.xn--sss604efuw.cc%2Ftv
+#EXTINF:-1 group-title="插件",BL 哔哩哔哩
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/1d2a991d7ff38e45e5cc1eb6156b045dc19d291a/plugins/bl/dist/bl.jar?sha256=f8b4005fe683fddaf739bfb5625fdb3be724f8afc1012017d7a2f4c7784a1604
+#EXTINF:-1 group-title="插件",Folia 音乐（Android 7.0+）
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/1d2a991d7ff38e45e5cc1eb6156b045dc19d291a/plugins/folia-full/dist/folia-full.jar?sha256=e468889775459a57952ee5ce3e6e5aa690c83c1a05ec7a42627f3eff458c3d67
+#EXTINF:-1 group-title="插件",Folia 音频频道
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/1d2a991d7ff38e45e5cc1eb6156b045dc19d291a/plugins/folia/dist/folia.jar?sha256=4b21c696b6b05d0245013a5272b017bc9397f39a4dbd5ce1016b47773f610ec5

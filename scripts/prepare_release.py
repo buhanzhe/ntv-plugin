@@ -35,7 +35,7 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def artifact(path, kind, tag):
+def artifact(path, kind, tag, *, url=None):
     if kind == "ku9-js":
         info = {"version": digest(path)[:12], "minSdk": 14}
     else:
@@ -51,7 +51,7 @@ def artifact(path, kind, tag):
     if not 0 < size <= 32 * 1024 * 1024:
         raise ValueError(f"Plugin size is invalid: {path}")
     item = {
-        "file": path.name, "url": f"{RELEASES}download/{tag}/{path.name}",
+        "file": path.name, "url": url or f"{RELEASES}download/{tag}/{path.name}",
         "sha256": sha, "bytes": size, "version": str(info["version"]),
         "minSdk": info.get("minSdk", 14), "abis": info.get("abis", sorted(info.get("engines", {}))),
     }
@@ -63,6 +63,47 @@ def artifact(path, kind, tag):
 
 def write_json(path, data):
     path.write_bytes((json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+
+
+def write_playlist(path, entries):
+    lines = ["#EXTM3U"]
+    for entry in entries:
+        if entry["kind"] != "channel":
+            continue
+        for item in entry["artifacts"]:
+            name = entry["name"]
+            minimum = item.get("minSdk", 14)
+            if minimum == 24:
+                name += "（Android 7.0+）"
+            elif minimum > 14:
+                name += f"（API {minimum}+）"
+            if item.get("abis"):
+                name += " · " + "/".join(item["abis"])
+            query = {"sha256": item["sha256"]}
+            if entry["id"] == "tvbox":
+                query["url"] = "http://www.xn--sss604efuw.cc/tv"
+            # Folia without audio opens its search UI; never ship a fake song URL.
+            lines.extend([f'#EXTINF:-1 group-title="插件",{name}',
+                          item["url"] + "?" + urlencode(query)])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
+
+
+def prepare_repository_playlist(ref, output):
+    if not re.fullmatch(r"[0-9a-f]{40}", ref):
+        raise ValueError("Use a full Git commit SHA to pin repository artifacts")
+    entries = []
+    for plugin, name, kind, paths in PLUGINS:
+        if kind != "channel":
+            continue
+        items = []
+        for relative in paths:
+            path = ROOT / "plugins" / relative
+            url = f"https://raw.githubusercontent.com/buhanzhe/ntv-plugin/{ref}/plugins/{relative}"
+            items.append(artifact(path, kind, ref, url=url))
+        entries.append({"id": plugin, "name": name, "kind": kind, "artifacts": items})
+    write_playlist(output, entries)
+    print(f"Prepared {output} with {sum(len(e['artifacts']) for e in entries)} channel plugins")
 
 
 def prepare(tag, output):
@@ -93,18 +134,12 @@ def prepare(tag, output):
         styles.append({"id": style, "name": entry["name"], "style": style, "url": item["url"], "sha256": item["sha256"]})
     write_json(output / "radio-ui.json", {"schema": 1, "styles": styles})
 
-    extras = {
-        "tvbox": {"url": "http://www.xn--sss604efuw.cc/tv"},
-        "folia": {"audio": "https://example.org/song.mp3", "title": "Folia"},
-    }
     for plugin, entry in entries.items():
         if entry["kind"] != "channel":
             continue
-        item = entry["artifacts"][0]
-        query = urlencode({"sha256": item["sha256"], **extras.get(plugin, {})})
-        playlist = f'#EXTM3U\n#EXTINF:-1 group-title="插件",{entry["name"]}\n{item["url"]}?{query}\n'
-        (output / f"{plugin}.m3u").write_bytes(playlist.encode("utf-8"))
-    names = sorted(list(assets) + ["plugins.json", "radio-ui.json"]
+        write_playlist(output / f"{plugin}.m3u", [entry])
+    write_playlist(output / "all.m3u", entries.values())
+    names = sorted(list(assets) + ["plugins.json", "radio-ui.json", "all.m3u"]
                    + [plugin + ".m3u" for plugin, entry in entries.items() if entry["kind"] == "channel"])
     sums = "".join(f"{digest(output / name)}  {name}\n" for name in names)
     (output / "SHA256SUMS").write_bytes(sums.encode("ascii"))
@@ -113,7 +148,15 @@ def prepare(tag, output):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("tag")
+    parser.add_argument("tag", nargs="?")
+    parser.add_argument("--repository-ref", help="Generate one repository all.m3u pinned to a full commit SHA")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    prepare(args.tag, args.output)
+    if args.repository_ref:
+        if args.tag:
+            parser.error("Use a release tag or --repository-ref, not both")
+        prepare_repository_playlist(args.repository_ref, args.output)
+    elif args.tag:
+        prepare(args.tag, args.output)
+    else:
+        parser.error("Provide a release tag or --repository-ref")
