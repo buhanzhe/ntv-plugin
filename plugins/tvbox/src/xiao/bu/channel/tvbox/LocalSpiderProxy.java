@@ -24,20 +24,22 @@ import java.util.concurrent.TimeUnit;
 import okhttp3.HttpUrl;
 
 final class LocalSpiderProxy implements Closeable {
+    interface Source { Object[] proxy(Map<String, String> arguments) throws Exception; }
+
     private final ServerSocket listener = new ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"));
     private final String route = "/proxy/" + UUID.randomUUID();
     private final Set<Socket> clients = Collections.synchronizedSet(new HashSet<>());
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(2, 4, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(2));
-    private volatile JavaSpider spider;
+    private volatile Source spider;
 
     LocalSpiderProxy() throws IOException {
         new Thread(this::listen, "tvbox-proxy").start();
     }
 
     String url() { return "http://127.0.0.1:" + listener.getLocalPort() + route; }
-    void set(JavaSpider source) { spider = source; }
-    void clear(JavaSpider source) { if (spider == source) spider = null; }
+    void set(Source source) { spider = source; }
+    void clear(Source source) { if (spider == source) spider = null; }
 
     private void listen() {
         while (!listener.isClosed()) {
@@ -58,8 +60,8 @@ final class LocalSpiderProxy implements Closeable {
             if (line.length < 2 || !line[1].startsWith("/") || !("GET".equals(line[0]) || "HEAD".equals(line[0]))) return;
             OutputStream output = socket.getOutputStream();
             HttpUrl url = HttpUrl.parse("http://127.0.0.1" + line[1]);
-            JavaSpider source = spider;
-            if (url == null || !route.equals(url.encodedPath()) || source == null) {
+            Source source = spider;
+            if (url == null || !matches(url.encodedPath()) || source == null) {
                 response(output, 404, "text/plain", null, null, false);
                 return;
             }
@@ -93,6 +95,11 @@ final class LocalSpiderProxy implements Closeable {
                     "GET".equals(line[0]));
         } catch (IOException | RuntimeException ignored) {
         } finally { remove(socket); }
+    }
+
+    private boolean matches(String path) {
+        return route.equals(path) || path.startsWith(route + ".")
+                && path.substring(route.length() + 1).matches("[a-z0-9]{1,6}");
     }
 
     private static void response(OutputStream out, int code, String mime, InputStream stream, Object headers,

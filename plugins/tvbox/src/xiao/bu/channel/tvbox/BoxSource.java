@@ -28,6 +28,7 @@ final class BoxSource implements Closeable {
     private Site current;
     private Spider spider;
     private final JavaSpider.Jars jars;
+    private final HuyaLive huya;
 
     BoxSource(Context context, ChannelPlugin.VodHost host, ClassLoader assets, BoxHttp http) {
         this.context = context;
@@ -35,6 +36,7 @@ final class BoxSource implements Closeable {
         this.assets = assets;
         this.http = http;
         jars = new JavaSpider.Jars(context, http);
+        huya = new HuyaLive(http);
     }
 
     static final class Site {
@@ -174,6 +176,8 @@ final class BoxSource implements Closeable {
                 if (!result.optString("url").isEmpty()) return result;
             } catch (Exception ignored) { }
         }
+        JSONObject live = huya.resolve(url);
+        if (live != null) return live;
         throw new IOException("该线路需要站源提供可用的 JSON 解析接口");
     }
 
@@ -243,6 +247,7 @@ final class BoxSource implements Closeable {
     private String resource(String value) throws IOException { return BoxHttp.resolve(origin, value); }
 
     private void closeSpider() {
+        huya.close();
         if (spider != null) spider.close();
         spider = null;
         current = null;

@@ -30,6 +30,9 @@ final class ScriptSpider {
     }
 
     static final class Js implements BoxSource.Spider {
+        private static final String LEGACY = "catvod:legacy";
+        private static final String CHEERIO = "assets://js/lib/cheerio.min.js";
+        private static final String CRYPTO_JS = "assets://js/lib/crypto-js.js";
         private final ChannelPlugin.VodHost host;
         private final BoxHttp http;
         private final ClassLoader assets;
@@ -45,7 +48,10 @@ final class ScriptSpider {
 
         public JSONObject invoke(String method, Object... args) throws Exception {
             String[] result = new String[1];
-            String source = "import * as entry from " + JSONObject.quote(url) + ";\n"
+            String[] scriptError = new String[1];
+            Exception[] hostError = new Exception[1];
+            String source = "import '" + LEGACY + "';\n"
+                    + "import * as entry from " + JSONObject.quote(url) + ";\n"
                     + "const b=globalThis.NtvCjsBridge;"
                     + "const value=entry.default || entry.__ntvLegacy || entry;"
                     + "const legacy={homeContent:'home',homeVideoContent:'homeVod',categoryContent:'category',"
@@ -55,44 +61,83 @@ final class ScriptSpider {
                     + " ? new value() : await value()) : value;"
                     + "if(spider.init) await spider.init(" + JSONObject.quote(extend) + ");"
                     + "const name=" + JSONObject.quote(method) + ";"
-                    + "const fn=spider[name] || spider[legacy[name]];"
-                    + "const out=fn ? await fn.apply(spider," + new JSONArray(java.util.Arrays.asList(args)) + ") : {};"
+                    + "const callArgs=" + new JSONArray(java.util.Arrays.asList(args)) + ";"
+                    + "const modern=spider[name];"
+                    + "const fn=modern || spider[legacy[name]];"
+                    + "if(!modern && name==='detailContent') callArgs[0]=callArgs[0][0];"
+                    + "const out=fn ? await fn.apply(spider,callArgs) : {};"
                     + "b.complete(typeof out==='string' ? out : JSON.stringify(out));"
                     + "} catch(e) { b.fail(String(e)); }";
-            host.javascript(source, new ChannelPlugin.ScriptHost() {
-                public boolean isCancelled() { return Thread.currentThread().isInterrupted(); }
-                public String invoke(int operation, String[] args) throws Exception {
-                    switch (operation) {
-                        case 2: return http.request(args[0], new JSONObject(args[1])).toString();
-                        case 3: return digest(args[0], "MD5");
-                        case 4: return null;
-                        case 5: result[0] = args[0]; return null;
-                        case 6: throw new IOException("JS 爬虫运行失败");
-                        case 7: return storage.get(args[0]);
-                        case 8:
-                            if (storage.size() < 256 && args[1].length() < 65536) storage.put(args[0], args[1]);
-                            return null;
-                        case 9: return digest(args[1], args[0]);
-                        case 10: return android.util.Base64.encodeToString(args[0].getBytes("UTF-8"), android.util.Base64.NO_WRAP);
-                        case 11: return new String(android.util.Base64.decode(args[0], android.util.Base64.DEFAULT), "UTF-8");
-                        case 15: return BoxHttp.resolve(args[0], args[1]);
-                        case 16: return module(args[0]);
-                        case 17: return normalize(args[0], args[1]);
-                        default: throw new IOException("JS API 不受支持");
+            try {
+                host.javascript(source, new ChannelPlugin.ScriptHost() {
+                    public boolean isCancelled() { return Thread.currentThread().isInterrupted(); }
+                    public String invoke(int operation, String[] values) throws Exception {
+                        if (operation == 5) { result[0] = values[0]; return null; }
+                        if (operation == 6) { scriptError[0] = values[0]; return null; }
+                        try {
+                            return callHost(operation, values);
+                        } catch (Exception error) {
+                            hostError[0] = error;
+                            throw error;
+                        }
                     }
-                }
-            });
+                });
+            } catch (IOException error) {
+                if (isBridgeFailure(error.getMessage()) && hostError[0] != null) throw hostError[0];
+                throw error;
+            }
+            if (scriptError[0] != null) {
+                if (isBridgeFailure(scriptError[0]) && hostError[0] != null) throw hostError[0];
+                throw new IOException("JS 爬虫运行失败 · " + scriptError[0]);
+            }
             if (result[0] == null) throw new IOException("JS 爬虫未返回结果");
             return new JSONObject(result[0]);
         }
 
+        private String callHost(int operation, String[] values) throws Exception {
+            switch (operation) {
+                case 2: return http.request(values[0], new JSONObject(values[1])).toString();
+                case 3: return digest(values[0], "MD5");
+                case 4: return null;
+                case 7: return storage.get(values[0]);
+                case 8:
+                    if ((storage.size() < 256 || storage.containsKey(values[0])) && values[1].length() < 65536)
+                        storage.put(values[0], values[1]);
+                    return null;
+                case 9: return digest(values[1], values[0]);
+                case 10: return android.util.Base64.encodeToString(values[0].getBytes("UTF-8"), android.util.Base64.NO_WRAP);
+                case 11: return new String(android.util.Base64.decode(values[0], android.util.Base64.DEFAULT), "UTF-8");
+                case 15: return BoxHttp.resolve(values[0], values[1]);
+                case 16: return module(values[0]);
+                case 17: return normalize(values[0], values[1]);
+                default: throw new IOException("JS API 不受支持");
+            }
+        }
+
+        private static boolean isBridgeFailure(String message) {
+            return message != null && message.contains("CJS host call failed");
+        }
+
         private String normalize(String base, String name) throws IOException {
-            if ("catvod".equals(name) || "catvod:host".equals(name)) return name;
-            if (name.equals("assets://js/lib/catvod.js")) return "catvod";
+            if ("catvod:host".equals(name) || asset(name) != null) return name;
+            if ("assets://js/lib/catvod.js".equals(name)) return "catvod";
+            if ("assets://js/vendor/cheerio.min.js".equals(name)) return CHEERIO;
+            if ("assets://js/vendor/crypto-js.js".equals(name)) return CRYPTO_JS;
             if (name.startsWith("http://") || name.startsWith("https://")) return BoxHttp.url(name).toString();
             if (name.startsWith("./") || name.startsWith("../") || name.startsWith("/"))
                 return BoxHttp.resolve(base, name);
-            throw new IOException("未支持的 JS 模块");
+            throw new IOException("未支持的 JS 模块 " + name);
+        }
+
+        private static String asset(String name) {
+            switch (name) {
+                case "catvod": return "assets/catvod.js";
+                case LEGACY: return "assets/legacy.js";
+                case CHEERIO: return "assets/legacy-html.js";
+                case "catvod:cheerio": return "assets/vendor/cheerio.min.js";
+                case CRYPTO_JS: return "assets/vendor/crypto-js.js";
+                default: return null;
+            }
         }
 
         private String module(String name) throws Exception {
@@ -100,9 +145,10 @@ final class ScriptSpider {
             String cached = modules.get(name);
             if (cached != null) return cached;
             String code;
-            if ("catvod".equals(name)) try (InputStream input = assets.getResourceAsStream("assets/catvod.js")) {
-                if (input == null) throw new IOException("缺少 CatVod JS 适配器");
-                code = new String(BoxHttp.read(input, 256 * 1024), "UTF-8");
+            String bundled = asset(name);
+            if (bundled != null) try (InputStream input = assets.getResourceAsStream(bundled)) {
+                if (input == null) throw new IOException("缺少内置 JS 模块 " + name);
+                code = new String(BoxHttp.read(input, 1024 * 1024), "UTF-8");
             } else {
                 code = http.text(name, 2 * 1024 * 1024);
                 if (name.equals(url)) code += "\nexport const __ntvLegacy=typeof __jsEvalReturn === 'undefined' ? undefined : __jsEvalReturn;";

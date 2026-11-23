@@ -1,0 +1,3 @@
+The Cheerio and CryptoJS bundles are copied from FongMi/TV, GPL-3.0, revision e7e7dd06250ca53da3c594ca4f6befc02e56b1d1.
+Sources: https://github.com/FongMi/TV/tree/e7e7dd06250ca53da3c594ca4f6befc02e56b1d1/quickjs/src/main/assets/js/vendor
+Upstream component licenses: LICENSE-Cheerio and LICENSE-CryptoJS.

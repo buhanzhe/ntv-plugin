@@ -21,7 +21,7 @@ import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-final class JavaSpider implements BoxSource.Spider {
+final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
     static final class Jars {
         private final Context context;
         private final BoxHttp http;
@@ -154,7 +154,7 @@ final class JavaSpider implements BoxSource.Spider {
         return new JSONObject(String.valueOf(result));
     }
 
-    Object[] proxy(Map<String, String> query) throws Exception {
+    @Override public Object[] proxy(Map<String, String> query) throws Exception {
         Method method = optional(type, "localProxy", Map.class);
         Object[] response = method == null ? null : (Object[]) call(method, target, query);
         if (response != null) return response;

@@ -1,6 +1,10 @@
 # nTv TVBox 插件
 
-TVBox 沿用 BL 的频道 JAR 接口，点播交给 nTv 播放器。安装支持插件管理的 nTv APK 后，在管理网页的「插件管理」上传 `dist/tvbox.jar`，输入配置地址并点击「打开 TVBox」。电视端可以用遥控器切换站点、浏览分类、搜索、查看详情和选集。播放时按返回键回到选集。
+TVBox 复用 BL 的原生卡片、遥控器键盘和焦点样式。电视端通过左侧导航切换站点、查看推荐和分类、搜索影片。选中站点即加载该站点的爬虫。详情页显示封面和简介，按播放线路切换选集。点播交给 nTv 播放器，播放时按返回键回到选集。
+
+在 nTv 管理网页的「插件管理」上传 `dist/tvbox.jar`，输入配置地址并点击「打开 TVBox」。共用界面组件随 TVBox JAR 一并打包。
+
+也可以导入 [TVBox 在线订阅](https://github.com/buhanzhe/ntv-plugin/releases/latest/download/tvbox.m3u)。
 
 ## 频道地址
 
@@ -28,10 +32,12 @@ https://example.org/tvbox.jar?sha256=<SHA-256>&url=<编码后的配置地址>
 | HTTP 站源 | type 0 XML、type 1 JSON、type 4 HTTP，支持 type 1 JSON 解析接口 |
 | CatVod Java | type 3 `csp_*`，从全局 `spider` 或站点 `jar` 加载 DEX JAR，支持 `;md5;`。兼容常用的 CatVod API 和本机流式代理 |
 | 夸克 / UC | 使用配置中提供的兼容爬虫及其登录配置。支持爬虫返回的媒体请求头和 CatVod 本机代理 Range 传输 |
-| JavaScript | type 3 `.js`，支持 ES module 导入、相对模块及基础 `catvod` API |
+| JavaScript | type 3 `.js`，支持 ES module、相对模块、基础 `catvod` API，以及旧版 drpy 常用的 Cheerio、CryptoJS、选择器和 URL 解析接口 |
 | Python | type 3 `.py`，通过独立的 Python 插件运行 |
 
 TVBox JAR 的最低版本是 Android 4.0（API 14）。在旧版 ARM 设备上使用 Python 站源时安装 `python-arm32.jar`。第三方站点的 JAR 可能额外依赖特定版本的 FongMi 宿主接口、原生库或登录流程。JS 和 Python 兼容基础爬虫协议，站点的专有模块、浏览器嗅探解析和依赖需要逐站核验。
+
+虎牙站源返回公开直播间网页时，TVBox 会通过虎牙接口读取服务端提供的直播线路，检查可用的 HLS 或 FLV 后交给 nTv 播放。
 
 源协议和扩展格式参考 [FongMi TV 的爬虫文档](https://github.com/FongMi/TV/blob/5bf18d6ae8b0ccd9b753ef98f932838de2eb7254/website/app/spider/page.tsx)。
 

@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -11,6 +13,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okio.ByteString;
 import org.json.JSONObject;
 
 final class BoxHttp {
@@ -45,11 +48,7 @@ final class BoxHttp {
 
     JSONObject request(String target, JSONObject options) throws Exception {
         Request.Builder request = new Request.Builder().url(url(target));
-        JSONObject headers = options.optJSONObject("headers");
-        if (headers != null) for (Iterator<String> keys = headers.keys(); keys.hasNext();) {
-            String name = keys.next();
-            request.header(name, headers.getString(name));
-        }
+        headers(request, options.optJSONObject("headers"));
         String method = options.optString("method", "GET").toUpperCase(java.util.Locale.US);
         if (!method.matches("GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS")) throw new IOException("无效 HTTP 方法");
         if ("GET".equals(method) || "HEAD".equals(method)) request.method(method, null);
@@ -63,6 +62,38 @@ final class BoxHttp {
             return new JSONObject().put("code", response.code()).put("headers", resultHeaders)
                     .put("url", response.request().url().toString())
                     .put("content", new String(read(response.body(), CONTENT_LIMIT), "UTF-8"));
+        }
+    }
+
+    boolean hasMediaPrefix(HttpUrl address, JSONObject headers, String prefix) throws Exception {
+        try (Response response = probeMedia(address, headers)) {
+            ResponseBody body = response.body();
+            return response.isSuccessful() && body != null
+                    && body.source().rangeEquals(0, ByteString.encodeUtf8(prefix));
+        } catch (IOException unavailable) {
+            return false;
+        }
+    }
+
+    Response probeMedia(HttpUrl address, JSONObject headers) throws Exception {
+        Request.Builder request = new Request.Builder().url(address);
+        headers(request, headers);
+        return client.newBuilder().callTimeout(4, TimeUnit.SECONDS).build().newCall(request.build()).execute();
+    }
+
+    Response openMedia(HttpUrl address, JSONObject headers, Map<String, String> options) throws Exception {
+        Request.Builder request = new Request.Builder().url(address);
+        headers(request, headers);
+        String range = options.get("range"), ifRange = options.get("if-range");
+        if (range != null) request.header("Range", range);
+        if (ifRange != null) request.header("If-Range", ifRange);
+        return client.newCall(request.build()).execute();
+    }
+
+    private static void headers(Request.Builder request, JSONObject headers) throws Exception {
+        if (headers != null) for (Iterator<String> keys = headers.keys(); keys.hasNext();) {
+            String name = keys.next();
+            request.header(name, headers.getString(name));
         }
     }
 

@@ -90,7 +90,7 @@ def build(args):
     is_python = args.plugin == "python"
     info = (dict(api=1, version=2, minSdk=14 if arm32 else 24, entry="xiao.bu.python.RuntimePlugin",
                  abis=[args.abi], pythonVersion="3.11.17" if arm32 else PYTHON_VERSION)
-            if is_python else dict(api=1, version=2, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
+            if is_python else dict(api=1, version=4, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
                                    native=True, hostCapability="VodHost"))
     android = args.sdk / "platforms/android-34/android.jar"
     classes = output / "classes"
@@ -99,7 +99,10 @@ def build(args):
     java = args.java_home / "bin"
     extension = ".exe" if os.name == "nt" else ""
     dependency = [android]
+    sources = sorted((folder / "src").rglob("*.java"))
     if not is_python:
+        bl_ui = PLUGINS / "bl/src/xiao/bu/channel/bl"
+        sources.extend(bl_ui / name for name in ("BlUi.java", "BlTheme.java", "BlTile.java"))
         cache = Path.home() / ".gradle/caches/modules-2/files-2.1"
         for name in ("okhttp-3.12.13.jar", "okio-1.15.0.jar"):
             candidates = sorted(cache.rglob(name))
@@ -109,7 +112,7 @@ def build(args):
     contract = JAVA_API / ("PythonPlugin.java" if is_python else "ChannelPlugin.java")
     run(java / ("javac" + extension), "--release", "8", "-encoding", "UTF-8",
         "-d", classes, "-cp", os.pathsep.join(map(str, dependency)),
-        contract, *sorted((folder / "src").rglob("*.java")))
+        contract, *sources)
     with zipfile.ZipFile(jar, "w") as z:
         for file in sorted(classes.rglob("*.class")):
             name = file.relative_to(classes).as_posix()
