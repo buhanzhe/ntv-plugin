@@ -146,6 +146,11 @@ final class BoxSource implements Closeable {
         return spider == null ? cms(null, id, null, 1) : spider.invoke("detailContent", new JSONArray().put(id));
     }
 
+    JSONObject action(String action) throws Exception {
+        if (current == null || !current.java()) throw new IOException("站点未提供此操作");
+        return spider.invoke("action", action);
+    }
+
     JSONObject play(String flag, String id) throws Exception {
         JSONArray flags = config.optJSONArray("flags");
         JSONObject result = spider == null

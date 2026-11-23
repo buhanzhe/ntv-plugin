@@ -17,6 +17,7 @@ ROOT = PLUGINS.parent
 JAVA_API = ROOT / "host-api/src/xiao/bu/tv/jar"
 PYTHON_VERSION = "3.14.8"
 PYTHON_HASH = "11324313957da3736f44e90257304d288864321a4dd376ed0cc35a54eacf9a33"
+GSON_HASH = "4241c14a7727c34feea6507ec801318a3d4a90f070e4525681079fb94ee4c593"
 LIBRARIES = ["libcrypto_python.so", "libssl_python.so", "libsqlite3_python.so", "libpython3.14.so"]
 
 
@@ -90,7 +91,7 @@ def build(args):
     is_python = args.plugin == "python"
     info = (dict(api=1, version=2, minSdk=14 if arm32 else 24, entry="xiao.bu.python.RuntimePlugin",
                  abis=[args.abi], pythonVersion="3.11.17" if arm32 else PYTHON_VERSION)
-            if is_python else dict(api=1, version=4, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
+            if is_python else dict(api=1, version=5, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
                                    native=True, hostCapability="VodHost"))
     android = args.sdk / "platforms/android-34/android.jar"
     classes = output / "classes"
@@ -99,6 +100,7 @@ def build(args):
     java = args.java_home / "bin"
     extension = ".exe" if os.name == "nt" else ""
     dependency = [android]
+    bundled_jars = []
     sources = sorted((folder / "src").rglob("*.java"))
     if not is_python:
         bl_ui = PLUGINS / "bl/src/xiao/bu/channel/bl"
@@ -109,6 +111,11 @@ def build(args):
             if not candidates:
                 raise ValueError(f"Build the host first to resolve {name}")
             dependency.append(candidates[0])
+        gson = output / "gson-2.10.1.jar"
+        download(gson, "https://repo.maven.apache.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar",
+                 GSON_HASH)
+        dependency.append(gson)
+        bundled_jars.append(gson)
     contract = JAVA_API / ("PythonPlugin.java" if is_python else "ChannelPlugin.java")
     run(java / ("javac" + extension), "--release", "8", "-encoding", "UTF-8",
         "-d", classes, "-cp", os.pathsep.join(map(str, dependency)),
@@ -120,7 +127,7 @@ def build(args):
                 z.write(file, name)
     d8 = args.sdk / "build-tools/35.0.0/lib/d8.jar"
     run(java / ("java" + extension), "-cp", d8, "com.android.tools.r8.D8", "--min-api", str(info["minSdk"]),
-        "--lib", android, "--classpath", classes, "--output", output, jar)
+        "--lib", android, "--classpath", classes, "--output", output, jar, *bundled_jars)
     dist = folder / "dist"
     dist.mkdir(exist_ok=True)
     destination = dist / ("python-arm32.jar" if arm32 else "python-arm64.jar" if is_python else "tvbox.jar")

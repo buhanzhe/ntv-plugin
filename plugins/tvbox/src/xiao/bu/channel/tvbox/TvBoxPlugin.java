@@ -88,11 +88,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private static final class SiteHome {
         final BoxSource.Site site;
         final JSONArray categories, videos;
+        final String notice;
 
-        SiteHome(BoxSource.Site site, JSONArray categories, JSONArray videos) {
+        SiteHome(BoxSource.Site site, JSONArray categories, JSONArray videos, String notice) {
             this.site = site;
             this.categories = categories;
             this.videos = videos;
+            this.notice = notice;
         }
     }
 
@@ -269,9 +271,30 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         load(() -> {
             source.select(site);
             JSONObject home = source.home();
+            JSONArray categories = home.optJSONArray("class");
             JSONArray videos = home.optJSONArray("list");
-            if (videos == null || videos.length() == 0) videos = source.recommendations().optJSONArray("list");
-            SiteHome model = new SiteHome(site, home.optJSONArray("class"), videos);
+            String notice = "";
+            if (!hasVideos(videos)) {
+                try { videos = source.recommendations().optJSONArray("list"); }
+                catch (Exception | LinkageError error) {
+                    notice = "推荐加载失败 · " + error.getClass().getSimpleName();
+                }
+            }
+            if (!hasVideos(videos) && categories != null) {
+                for (int i = 0; i < Math.min(120, categories.length()); i++) {
+                    JSONObject category = categories.optJSONObject(i);
+                    if (category == null || category.optString("type_id").isEmpty()) continue;
+                    String id = category.optString("type_id");
+                    try {
+                        videos = source.category(id, 1, new JSONObject()).optJSONArray("list");
+                        if (hasVideos(videos)) notice = "分类 · " + category.optString("type_name", id);
+                    } catch (Exception | LinkageError error) {
+                        notice = "分类加载失败 · " + error.getClass().getSimpleName();
+                    }
+                    break;
+                }
+            }
+            SiteHome model = new SiteHome(site, categories, videos, notice);
             return () -> {
                 currentSite = model;
                 show(homeScreen(model), true);
@@ -281,14 +304,25 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Screen homeScreen(SiteHome model) {
         return new Screen(Tab.HOME, model.site.name, true, () -> {
+            message(model.notice);
             if (!videos(model.site, model.videos)) {
-                message("暂无推荐影片");
+                if (model.notice.isEmpty()) message("站点暂无推荐影片");
                 if (model.categories != null && model.categories.length() > 0) {
                     Button categories = action(body, "浏览分类", () -> switchTab(Tab.CATEGORIES));
                     primary = categories;
+                } else {
+                    primary = action(body, "搜索影片", () -> switchTab(Tab.SEARCH));
                 }
             }
         });
+    }
+
+    private static boolean hasVideos(JSONArray items) {
+        for (int i = 0; items != null && i < Math.min(160, items.length()); i++) {
+            JSONObject item = items.optJSONObject(i);
+            if (item != null && !item.optString("vod_id").isEmpty()) return true;
+        }
+        return false;
     }
 
     private Screen categoryScreen(SiteHome model) {
@@ -381,10 +415,23 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         });
         cards.setOnItemClickListener((parent, view, index, id) -> {
             screen.selection = index;
-            detail(site, videos.get(index));
+            JSONObject item = videos.get(index);
+            String command = item.optString("action");
+            if (command.isEmpty() && "action".equals(item.optString("vod_tag"))) command = item.optString("vod_id");
+            if (command.isEmpty()) detail(site, item);
+            else runSiteAction(site, command);
         });
         addGrid(body, cards, VIDEO_COLUMNS);
         return true;
+    }
+
+    private void runSiteAction(BoxSource.Site site, String command) {
+        load(() -> {
+            source.select(site);
+            JSONObject result = source.action(command);
+            String text = result.optString("toast");
+            return () -> message(text);
+        });
     }
 
     private void detail(BoxSource.Site site, JSONObject item) {

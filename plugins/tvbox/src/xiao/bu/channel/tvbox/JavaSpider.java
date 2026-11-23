@@ -1,5 +1,6 @@
 package xiao.bu.channel.tvbox;
 
+import android.app.Application;
 import android.content.Context;
 import android.util.LruCache;
 import com.github.catvod.Proxy;
@@ -37,7 +38,7 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
             if (loader == null) {
                 File file = fetch(specification);
                 loader = new DexClassLoader(file.getPath(), file.getParent(), null, JavaSpider.class.getClassLoader());
-                initializeJar(loader, context);
+                initializeJar(loader, new SpiderApplication(context.getApplicationContext(), JavaSpider.class.getClassLoader()));
                 loaders.put(specification, loader);
             }
             String name = site.api.substring(4);
@@ -112,6 +113,18 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
         }
     }
 
+    private static final class SpiderApplication extends Application {
+        private final ClassLoader loader;
+
+        SpiderApplication(Context application, ClassLoader loader) {
+            this.loader = loader;
+            attachBaseContext(application);
+        }
+
+        @Override public ClassLoader getClassLoader() { return loader; }
+        @Override public Context getApplicationContext() { return this; }
+    }
+
     private final Object target;
     private final Class<?> type;
     private final ClassLoader loader;
@@ -130,7 +143,8 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
             case "homeContent":
                 result = call(type.getMethod(method, boolean.class), target, args); break;
             case "homeVideoContent":
-                result = call(type.getMethod(method), target); break;
+                Method recommendations = optional(type, method);
+                result = recommendations == null ? "{}" : call(recommendations, target); break;
             case "detailContent":
                 result = call(type.getMethod(method, List.class), target, strings((JSONArray) args[0])); break;
             case "categoryContent":
@@ -149,8 +163,12 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
             case "playerContent":
                 result = call(type.getMethod(method, String.class, String.class, List.class),
                         target, args[0], args[1], strings((JSONArray) args[2])); break;
+            case "action":
+                result = call(type.getMethod(method, String.class), target, args); break;
             default: throw new IllegalArgumentException("未知爬虫操作");
         }
+        if (("action".equals(method) || "homeVideoContent".equals(method))
+                && (result == null || result.toString().trim().isEmpty())) return new JSONObject();
         return new JSONObject(String.valueOf(result));
     }
 
