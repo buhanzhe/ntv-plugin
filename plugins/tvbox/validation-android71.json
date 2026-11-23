@@ -1,0 +1,451 @@
+{
+  "date": "2026-11-23",
+  "pluginVersion": 6,
+  "configSha256": "c56298f9b520ab33fc06e38ad2d9bb1b7dbf8f982dded3f510346ac21682996e",
+  "device": {
+    "model": "MI 6",
+    "android": "7.1.1"
+  },
+  "scope": "50 entries; representative first available sample per entry, with targeted retries. Not all titles or routes.",
+  "counts": {
+    "metadata-search": 1,
+    "configuration": 1,
+    "playing": 31,
+    "load-timeout": 1,
+    "audio-playing": 1,
+    "playback-error": 7,
+    "empty-or-search-only": 3,
+    "no-episodes": 2,
+    "nested-folder": 1,
+    "playback-timeout": 1,
+    "notice": 1
+  },
+  "quark": "Authorized, enabled, and retained after process restart. WoGG and PanTa public samples played; IJK HEVC hardware decoding around 24 fps observed.",
+  "android44": {
+    "model": "Samsung",
+    "android": "4.4.4",
+    "avcHardware": true,
+    "hevcSoftware": true,
+    "audioToVideo": true,
+    "urlArrays": true,
+    "errorNoticeWithoutChannelCard": true,
+    "postErrorPlayback": true,
+    "htmlMediaWithCookieAndReferer": true,
+    "dynamicWebSniff": "not verified; legacy WebView did not complete the fixture"
+  },
+  "sites": [
+    {
+      "index": 0,
+      "name": "豆豆┃片单 <修复扫码Bug>",
+      "result": "metadata-search",
+      "status": "片单跳转选源搜索"
+    },
+    {
+      "index": 1,
+      "name": "🗂我的云盘┃配置",
+      "result": "configuration",
+      "status": "配置操作入口"
+    },
+    {
+      "index": 2,
+      "name": "👽玩偶哥哥┃4K弹幕",
+      "result": "playing",
+      "advancedMs": 4064,
+      "fps": 23.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 3,
+      "name": "🚀荐影┃预告片",
+      "result": "load-timeout",
+      "status": "加载超时，待排查"
+    },
+    {
+      "index": 4,
+      "name": "🎮一直播┃直播",
+      "result": "playing",
+      "advancedMs": 4189,
+      "fps": 30,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 5,
+      "name": "🎙️易听┃音乐",
+      "result": "audio-playing",
+      "advancedMs": 14517,
+      "fps": 0,
+      "status": "音频持续播放"
+    },
+    {
+      "index": 6,
+      "name": "♻️爱刷┃短视",
+      "result": "playing",
+      "advancedMs": 4052,
+      "fps": 60,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 7,
+      "name": "💡聚剧┃四盘",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 8,
+      "name": "🦊粤迷┃港剧",
+      "result": "playing",
+      "advancedMs": 4257,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 9,
+      "name": "🐱韩迷┃外剧",
+      "result": "playing",
+      "advancedMs": 4259,
+      "fps": 23.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 10,
+      "name": "🌞光影┃不卡",
+      "result": "playing",
+      "advancedMs": 4152,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 11,
+      "name": "📔厂长┃不卡",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 12,
+      "name": "🌟立播┃不卡",
+      "result": "playing",
+      "advancedMs": 4279,
+      "fps": 23.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 13,
+      "name": "👀瓜子┃不卡",
+      "result": "playing",
+      "advancedMs": 4274,
+      "fps": 24.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 14,
+      "name": "🍄比特┃不卡",
+      "result": "playing",
+      "advancedMs": 3050,
+      "fps": 24.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 15,
+      "name": "🥜花生┃不卡",
+      "result": "playing",
+      "advancedMs": 4476,
+      "fps": 24.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 16,
+      "name": "🍓糯米┃秒播",
+      "result": "playing",
+      "advancedMs": 4281,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 17,
+      "name": "💮文采┃秒播",
+      "result": "playing",
+      "advancedMs": 4381,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 18,
+      "name": "🧀奶酪┃秒播",
+      "result": "playing",
+      "advancedMs": 4279,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 19,
+      "name": "🍊橘猫┃多线",
+      "result": "playing",
+      "advancedMs": 4353,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 20,
+      "name": "📺热播┃多线",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 21,
+      "name": "☁️风云┃多线",
+      "result": "playing",
+      "advancedMs": 3133,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 22,
+      "name": "🥝荐片┃多线",
+      "result": "empty-or-search-only",
+      "status": "接口为空或搜索无结果"
+    },
+    {
+      "index": 23,
+      "name": "🏝奥特┃多线",
+      "result": "playing",
+      "advancedMs": 4374,
+      "fps": 23.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 24,
+      "name": "🧲新6V┃磁力",
+      "result": "no-episodes",
+      "status": "源未返回播放集"
+    },
+    {
+      "index": 25,
+      "name": "❤️AI剧┃弹幕",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 26,
+      "name": "🚌巴士┃动漫",
+      "result": "playing",
+      "advancedMs": 4306,
+      "fps": 24.2,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 27,
+      "name": "⚽八八┃看球",
+      "result": "nested-folder",
+      "status": "目录已进入，尚未找到有效节目"
+    },
+    {
+      "index": 28,
+      "name": "🏀多多┃回放",
+      "result": "playing",
+      "advancedMs": 4149,
+      "fps": 30,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 29,
+      "name": "🏐吃瓜┃看球",
+      "result": "no-episodes",
+      "status": "源未返回播放集"
+    },
+    {
+      "index": 30,
+      "name": "🎶明星┃MV",
+      "result": "playing",
+      "advancedMs": 3622,
+      "frames": 111,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 31,
+      "name": "🎧有声┃小说",
+      "result": "playback-timeout",
+      "advancedMs": 0,
+      "status": "未确认开始播放"
+    },
+    {
+      "index": 32,
+      "name": "🚑急救┃教学",
+      "result": "playing",
+      "advancedMs": 4435,
+      "fps": 24.7,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 33,
+      "name": "🐯虎牙┃直播",
+      "result": "playing",
+      "advancedMs": 3681,
+      "fps": 20,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 34,
+      "name": "🐟斗鱼┃直播",
+      "result": "playing",
+      "advancedMs": 4439,
+      "fps": 30.5,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 35,
+      "name": "🎈盘搜┃四盘",
+      "result": "empty-or-search-only",
+      "status": "接口为空或搜索无结果"
+    },
+    {
+      "index": 36,
+      "name": "🦋易搜┃四盘",
+      "result": "empty-or-search-only",
+      "status": "接口为空或搜索无结果"
+    },
+    {
+      "index": 37,
+      "name": "🐌盘她┃夸父",
+      "result": "playing",
+      "advancedMs": 4395,
+      "fps": 24.2,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 38,
+      "name": "🐞盘他┃嘟嘟",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 39,
+      "name": "🌶️抠抠┃搜搜",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 40,
+      "name": "🌈优汐┃搜搜",
+      "result": "playing",
+      "advancedMs": 5566,
+      "fps": 60,
+      "lastAttemptResult": "no-episodes",
+      "status": "视频持续播放；另一样本复测：源未返回播放集"
+    },
+    {
+      "index": 41,
+      "name": "🅱哔哔合集┃弹幕",
+      "result": "playing",
+      "advancedMs": 3300,
+      "frames": 102,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 42,
+      "name": "🅱哔哔演唱会┃弹幕",
+      "result": "playing",
+      "advancedMs": 4143,
+      "frames": 127,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 43,
+      "name": "📚儿童┃启蒙",
+      "result": "playback-error",
+      "status": "样本播放失败，待排查"
+    },
+    {
+      "index": 44,
+      "name": "📚少儿┃教育",
+      "result": "playing",
+      "advancedMs": 4244,
+      "frames": 130,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 45,
+      "name": "📚小学┃课堂",
+      "result": "playing",
+      "advancedMs": 4378,
+      "frames": 135,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 46,
+      "name": "📚初中┃课堂",
+      "result": "playing",
+      "advancedMs": 4281,
+      "frames": 131,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 47,
+      "name": "📚高中┃课堂",
+      "result": "playing",
+      "advancedMs": 3563,
+      "frames": 109,
+      "engine": "DASH",
+      "status": "视频持续播放"
+    },
+    {
+      "index": 48,
+      "name": "🛴手机┃推送",
+      "result": "playing",
+      "advancedMs": 3106,
+      "fps": 25.3,
+      "status": "视频持续播放"
+    },
+    {
+      "index": 49,
+      "name": "请勿信视频中任何广告",
+      "result": "notice",
+      "status": "说明入口"
+    }
+  ],
+  "finalPackageSha256": "72e55453f166171bd8a32da217c084115f880844f4996f3a150766f0c2a76cfc",
+  "finalSmoke": {
+    "android71": {
+      "bilibiliVideoAdvancedMs": 8000,
+      "pause": true,
+      "resume": true,
+      "speed": true,
+      "seek": true,
+      "backToEpisodes": true,
+      "testedArtifactSha256": "72e55453f166171bd8a32da217c084115f880844f4996f3a150766f0c2a76cfc",
+      "controlsArtifactSha256": "72e55453f166171bd8a32da217c084115f880844f4996f3a150766f0c2a76cfc"
+    },
+    "android44": {
+      "htmlMediaCookieAndReferer": true,
+      "videoAdvancedMs": 3599,
+      "hardwareDecoder": "OMX.qcom.video.decoder.avc",
+      "errorNoticeWithoutChannelCard": true,
+      "postErrorPlayback": true,
+      "authorizationFeedbackBuild": true,
+      "testedArtifactSha256": "72e55453f166171bd8a32da217c084115f880844f4996f3a150766f0c2a76cfc"
+    },
+    "authorizedQuarkPlayback": true,
+    "ucSmartPlayback": {
+      "passed": true,
+      "advancedMs": 5566,
+      "fps": 60,
+      "testedArtifactSha256": "72e55453f166171bd8a32da217c084115f880844f4996f3a150766f0c2a76cfc"
+    },
+    "blLegacyHost": {
+      "device": "Android 4.4.4",
+      "plugin": "BL",
+      "version": 18,
+      "homeRecommendationsLoaded": true,
+      "settingsOpened": true,
+      "legacyFullscreenFallback": true
+    }
+  },
+  "uc": "General and separate smart playback grants authorized. UC smart public sample played with IJK HEVC hardware decoding; observed 60 fps.",
+  "baidu": "General login enabled and retained after process restart. Public video sample playback not verified; result: playback-error",
+  "authorizationFeedback": "Observed authorization update toast on UC login. The source-owned dialog needs to be closed and reopened to refresh its label."
+}

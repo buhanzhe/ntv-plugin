@@ -29,6 +29,9 @@ final class BoxSource implements Closeable {
     private Spider spider;
     private final JavaSpider.Jars jars;
     private final HuyaLive huya;
+    private BoxSniffer sniffer;
+
+    void setSniffer(BoxSniffer value) { sniffer = value; }
 
     BoxSource(Context context, ChannelPlugin.VodHost host, ClassLoader assets, BoxHttp http) {
         this.context = context;
@@ -43,11 +46,13 @@ final class BoxSource implements Closeable {
         final JSONObject config;
         final String origin;
         final int type;
+        final boolean searchable;
         final String key, name, api, ext, jar;
         Site(JSONObject data, JSONObject config, String origin) {
             this.config = config;
             this.origin = origin;
             type = data.optInt("type", -1);
+            searchable = data.optInt("searchable", 1) != 0;
             key = data.optString("key");
             name = data.optString("name", key);
             api = data.optString("api");
@@ -156,19 +161,69 @@ final class BoxSource implements Closeable {
         JSONObject result = spider == null
                 ? current.type == 4 ? httpPlay(flag, id) : new JSONObject().put("url", id)
                 : spider.invoke("playerContent", flag, id, flags == null ? new JSONArray() : flags);
-        String url = result.optString("url");
-        if (url.isEmpty()) throw new IOException("站点没有返回可播放地址");
+        String url = playbackUrl(result.opt("url"));
+        result.put("url", url);
         if (result.optInt("parse") != 0 || result.optInt("jx") != 0) {
             JSONObject parsed = parse(flag, result.optString("playUrl"), url);
             if (parsed.opt("header") == null && result.opt("header") != null) parsed.put("header", result.opt("header"));
             result = parsed;
         }
-        result.put("url", BoxHttp.resolve(resource(current.type == 3 ? origin : current.api), result.getString("url")));
+        String resolved = BoxHttp.resolve(resource(current.type == 3 ? origin : current.api),
+                playbackUrl(result.opt("url")));
+        result.put("url", BoxHttp.url(resolved).uri().toString());
         return result;
     }
 
+    String playbackUrl(Object value) throws Exception {
+        JSONArray options = value instanceof JSONArray ? (JSONArray) value : null;
+        String text = value instanceof String ? ((String) value).trim() : "";
+        if (options == null && text.startsWith("[")) options = new JSONArray(text);
+        if (options != null) {
+            text = "";
+            for (int i = 0; i < options.length(); i++) {
+                JSONObject entry = options.optJSONObject(i);
+                String option = entry == null ? options.optString(i) : entry.optString("url");
+                if (spiderProxyUrl(option) || HttpUrl.parse(option) != null
+                        || option.startsWith("/") || option.startsWith("./") || option.startsWith("../")) {
+                    text = option;
+                    break;
+                }
+            }
+        }
+        if (text.isEmpty()) throw new IOException("站点没有返回可播放地址");
+        if (spiderProxyUrl(text)) {
+            if (current == null || !current.java()) throw new IOException("该站点未提供 Java 播放代理");
+            String query = text.startsWith("proxy://") ? text.substring("proxy://".length())
+                    : android.net.Uri.parse(text).getEncodedQuery();
+            text = com.github.catvod.Proxy.getUrl(true) + (query == null || query.isEmpty() ? "" : "?" + query);
+        }
+        if (current != null && current.java()) {
+            HttpUrl local = BoxHttp.url(com.github.catvod.Proxy.getUrl(true));
+            HttpUrl media = HttpUrl.parse(text);
+            // Preserve the HLS type across the private proxy so nTv rewrites HTTPS segments.
+            if (media != null && media.host().equals(local.host()) && media.port() == local.port()
+                    && media.encodedPath().equals(local.encodedPath())
+                    && ("m3u8".equalsIgnoreCase(media.queryParameter("do"))
+                        || "m3u8".equalsIgnoreCase(media.queryParameter("type"))))
+                return media.newBuilder().encodedPath(media.encodedPath() + ".m3u8").build().toString();
+        }
+        return text;
+    }
+
+    private static boolean spiderProxyUrl(String text) {
+        if (text.startsWith("proxy://")) return true;
+        android.net.Uri uri = android.net.Uri.parse(text);
+        return "http".equalsIgnoreCase(uri.getScheme()) && "/proxy".equals(uri.getPath())
+                && ("127.0.0.1".equals(uri.getHost()) || "localhost".equalsIgnoreCase(uri.getHost()));
+    }
+
     private JSONObject parse(String flag, String prefix, String url) throws Exception {
-        if (!prefix.isEmpty()) return new JSONObject(http.text(resource(prefix + url), BoxHttp.CONTENT_LIMIT));
+        if (!prefix.isEmpty()) {
+            String page = resource(prefix + url);
+            String text = http.text(page, BoxHttp.CONTENT_LIMIT).trim();
+            if (text.startsWith("{")) return new JSONObject(text);
+            if (sniffer != null) return sniffer.resolve(page);
+        }
         JSONArray parsers = config.optJSONArray("parses");
         if (parsers != null) for (int i = 0; i < parsers.length(); i++) {
             JSONObject parser = parsers.optJSONObject(i);
@@ -183,6 +238,15 @@ final class BoxSource implements Closeable {
         }
         JSONObject live = huya.resolve(url);
         if (live != null) return live;
+        if (sniffer != null) {
+            if (parsers != null) for (int i = 0; i < Math.min(3, parsers.length()); i++) {
+                JSONObject parser = parsers.optJSONObject(i);
+                if (parser == null || parser.optInt("type") != 0 || parser.optString("url").isEmpty()) continue;
+                try { return sniffer.resolve(resource(parser.optString("url") + url)); }
+                catch (IOException unavailable) { }
+            }
+            return sniffer.resolve(url);
+        }
         throw new IOException("该线路需要站源提供可用的 JSON 解析接口");
     }
 

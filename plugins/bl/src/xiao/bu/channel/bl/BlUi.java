@@ -10,7 +10,7 @@ import android.widget.*;
 /** Shared geometry and focus styling for the native BL pages. */
 public final class BlUi {
     public static final int TEXT=0xffeeeeee,SUB=0xffcccccc,ACCENT=0xffbb86fc;
-    final Context context;final float scale;
+    public final Context context;final float scale;
     BlTheme theme=BlTheme.BLACK;
     public BlUi(Context c){context=c;int width=Math.max(c.getResources().getDisplayMetrics().widthPixels,c.getResources().getDisplayMetrics().heightPixels);scale=Math.max(.5f,width/1280f);}
     public int px(float n){return Math.round(n*scale);}

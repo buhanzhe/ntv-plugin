@@ -82,12 +82,16 @@ final class BoxHttp {
     }
 
     Response openMedia(HttpUrl address, JSONObject headers, Map<String, String> options) throws Exception {
+        return mediaCall(address, headers, options).execute();
+    }
+
+    okhttp3.Call mediaCall(HttpUrl address, JSONObject headers, Map<String, String> options) throws Exception {
         Request.Builder request = new Request.Builder().url(address);
         headers(request, headers);
         String range = options.get("range"), ifRange = options.get("if-range");
         if (range != null) request.header("Range", range);
         if (ifRange != null) request.header("If-Range", ifRange);
-        return client.newCall(request.build()).execute();
+        return client.newCall(request.build());
     }
 
     private static void headers(Request.Builder request, JSONObject headers) throws Exception {

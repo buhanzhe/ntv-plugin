@@ -40,6 +40,30 @@ public interface ChannelPlugin {
         JSONObject python(JSONObject request) throws Exception;
         void javascript(String source, ScriptHost host) throws Exception;
     }
+    interface PlayerUiHost extends VodHost {
+        PlayerUi createPlayerUi(PlayerControls playback);
+    }
+    interface PlayerControls {
+        boolean playing();
+        boolean completed();
+        boolean loading();
+        String status();
+        String title();
+        long duration();
+        long position();
+        void toggle();
+        void seek(long position);
+        float speed();
+        void speed(float value);
+    }
+    interface PlayerUi {
+        View view();
+        void show();
+        void hide();
+        boolean visible();
+        boolean surfaceGesture(android.view.MotionEvent event);
+        void dispose();
+    }
     interface ScriptHost {
         String invoke(int operation, String[] arguments) throws Exception;
         boolean isCancelled();

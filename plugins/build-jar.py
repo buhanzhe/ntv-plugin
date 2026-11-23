@@ -91,10 +91,14 @@ def build(args):
     is_python = args.plugin == "python"
     info = (dict(api=1, version=2, minSdk=14 if arm32 else 24, entry="xiao.bu.python.RuntimePlugin",
                  abis=[args.abi], pythonVersion="3.11.17" if arm32 else PYTHON_VERSION)
-            if is_python else dict(api=1, version=5, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
+            if is_python else dict(api=1, version=6, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
                                    native=True, hostCapability="VodHost"))
     android = args.sdk / "platforms/android-34/android.jar"
     classes = output / "classes"
+    if classes.exists():
+        if classes.resolve().parent != output.resolve() or classes.is_symlink():
+            raise ValueError("Build class directory escapes the plugin build directory")
+        shutil.rmtree(classes)
     classes.mkdir(exist_ok=True)
     jar = output / "program.jar"
     java = args.java_home / "bin"
@@ -116,6 +120,17 @@ def build(args):
                  GSON_HASH)
         dependency.append(gson)
         bundled_jars.append(gson)
+        for component, sha in (
+                ("core", "201fb7deb6a40c61de5256c36a504486c6131a022e651107c6d2cab08e8e3168"),
+                ("dash", "d90279c972a344365eeaa5e2d540408267d81b3481e85f91b673e56bc756d981")):
+            archive = output / f"exoplayer-{component}-2.10.8.aar"
+            download(archive, f"https://maven.aliyun.com/repository/jcenter/com/google/android/exoplayer/"
+                     f"exoplayer-{component}/2.10.8/exoplayer-{component}-2.10.8.aar", sha)
+            library = output / f"exoplayer-{component}.jar"
+            with zipfile.ZipFile(archive) as source:
+                library.write_bytes(source.read("classes.jar"))
+            dependency.append(library)
+            bundled_jars.append(library)
     contract = JAVA_API / ("PythonPlugin.java" if is_python else "ChannelPlugin.java")
     run(java / ("javac" + extension), "--release", "8", "-encoding", "UTF-8",
         "-d", classes, "-cp", os.pathsep.join(map(str, dependency)),

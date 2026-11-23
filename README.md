@@ -8,6 +8,8 @@
 - 运行时 · [Python 和 Ku9](plugins/python/README.md)
 - 外部引擎 · [TVBus 打包](plugins/tvbus/README.md)
 
+TVBox v6 的 DASH 播放和统一控件需要更新 nTv 宿主。可从同版 Release 下载 ARM32、ARM64 或 x86 APK；[逐站设备验证](plugins/tvbox/VALIDATION.md) 列出已播放和仍待排查的入口。
+
 ## 发布
 
 `all.m3u` 汇总所有可通过频道入口打开的 JAR：文件浏览、TVBox、BL、Folia 音乐和 Folia 音频频道。每项包含实际 SHA-256，并固定到对应的仓库提交；Folia 音乐的 Android 7.0+ 要求会在频道名中标明。Python、Ku9、TVBus 运行时及界面插件通过插件管理安装，不作为播放频道塞入 M3U。

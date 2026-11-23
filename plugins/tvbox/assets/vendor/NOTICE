@@ -5,3 +5,7 @@ Upstream component licenses: LICENSE-Cheerio and LICENSE-CryptoJS.
 Gson 2.10.1 is bundled for CatVod Java crawlers. Copyright 2008 Google Inc.
 Source: https://github.com/google/gson/tree/gson-parent-2.10.1
 License: Apache-2.0, reproduced in LICENSE-Gson.
+
+ExoPlayer core and DASH 2.10.8. Copyright The Android Open Source Project.
+Source: https://github.com/google/ExoPlayer/tree/r2.10.8
+License: Apache-2.0, reproduced in LICENSE-ExoPlayer.

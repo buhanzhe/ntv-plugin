@@ -10,6 +10,8 @@ import android.widget.ImageView;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.Collections;
+import org.json.JSONObject;
 import okhttp3.Response;
 
 /** Bounded artwork cache for recycled TVBox cards. */
@@ -55,23 +57,47 @@ final class BoxArt {
     }
 
     private Bitmap fetch(String url) {
-        try (Response response = http.get(url)) {
-            if (!response.isSuccessful()) return null;
-            byte[] data = BoxHttp.read(response.body(), DOWNLOAD_LIMIT);
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inJustDecodeBounds = true;
-            BitmapFactory.decodeByteArray(data, 0, data.length, options);
-            if (options.outWidth <= 0 || options.outHeight <= 0) return null;
-            options.inSampleSize = 1;
-            while (Math.max(options.outWidth, options.outHeight) / options.inSampleSize > 640) {
-                options.inSampleSize *= 2;
+        try {
+            int offset = headerOffset(url);
+            String address = offset < 0 ? url : url.substring(0, offset);
+            JSONObject headers = new JSONObject();
+            if (offset >= 0) {
+                String suffix = android.net.Uri.decode(url.substring(offset + 1));
+                if (suffix.startsWith("{")) headers = new JSONObject(suffix);
+                else for (String field : url.substring(offset + 1).split("&")) {
+                    int equal = field.indexOf('=');
+                    if (equal <= 0) continue;
+                    String name = java.net.URLDecoder.decode(field.substring(0, equal), "UTF-8");
+                    String value = java.net.URLDecoder.decode(field.substring(equal + 1), "UTF-8");
+                    if (name.matches("[A-Za-z0-9!#$%&'*+.^_`|~-]+") && value.indexOf('\r') < 0 && value.indexOf('\n') < 0)
+                        headers.put(name, value);
+                }
             }
-            options.inJustDecodeBounds = false;
-            options.inPreferredConfig = Bitmap.Config.RGB_565;
-            return BitmapFactory.decodeByteArray(data, 0, data.length, options);
+            try (Response response = http.openMedia(BoxHttp.url(address), headers, Collections.emptyMap())) {
+                if (!response.isSuccessful()) return null;
+                byte[] data = BoxHttp.read(response.body(), DOWNLOAD_LIMIT);
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inJustDecodeBounds = true;
+                BitmapFactory.decodeByteArray(data, 0, data.length, options);
+                if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+                options.inSampleSize = 1;
+                while (Math.max(options.outWidth, options.outHeight) / options.inSampleSize > 640) {
+                    options.inSampleSize *= 2;
+                }
+                options.inJustDecodeBounds = false;
+                options.inPreferredConfig = Bitmap.Config.RGB_565;
+                return BitmapFactory.decodeByteArray(data, 0, data.length, options);
+            }
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    static int headerOffset(String url) {
+        int pipe = url.indexOf('|');
+        if (pipe >= 0) return pipe;
+        java.util.regex.Matcher marker = java.util.regex.Pattern.compile("(?i)@(?=(?:Referer|User-Agent|Cookie|Origin|Authorization|Accept)=|\\{|%7b)").matcher(url);
+        return marker.find() ? marker.start() : -1;
     }
 
     void close() {

@@ -169,6 +169,10 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
         }
         if (("action".equals(method) || "homeVideoContent".equals(method))
                 && (result == null || result.toString().trim().isEmpty())) return new JSONObject();
+        if ("action".equals(method) && !String.valueOf(result).trim().startsWith("{"))
+            return new JSONObject().put("toast", String.valueOf(result));
+        if (result == null || result.toString().trim().isEmpty())
+            throw new IOException("站点接口返回空内容");
         return new JSONObject(String.valueOf(result));
     }
 
