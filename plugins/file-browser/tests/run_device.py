@@ -21,12 +21,13 @@ parser.add_argument('--host',required=True,help='LAN address reachable from the 
 parser.add_argument('--port',type=int,default=39628)
 parser.add_argument('--guest',action='store_true')
 parser.add_argument('--screenshots',action='store_true')
+parser.add_argument('--perf',action='store_true')
 parser.add_argument('--adb',default='D:/android/sdk/platform-tools/adb.exe')
 args=parser.parse_args()
 adb=[args.adb,'-s',args.serial]
 def run(*command,**kwargs):return subprocess.run(adb+list(command),check=True,**kwargs)
 version=run('shell','getprop','ro.build.version.sdk',capture_output=True,text=True).stdout.strip()
-if version!='19':raise SystemExit('This probe intentionally targets Android 4.4 / API 19')
+if version not in {'15','19'}:raise SystemExit('This probe targets Android 4.0.4 / API 15 or Android 4.4 / API 19')
 out=ROOT/'output/file-browser'/datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
 out.mkdir(parents=True)
 fixture=ROOT/'.codex-tmp/file-browser/device-share';fixture.mkdir(exist_ok=True)
@@ -57,7 +58,7 @@ run('push',str(video),remote+'/sample.mp4',stdout=subprocess.DEVNULL)
 (fixture/'hidden.txt').write_text('video filter fixture')
 run('push',str(fixture/'hidden.txt'),remote+'/hidden.txt',stdout=subprocess.DEVNULL)
 run('shell','input','keyevent','224')
-command=['shell','am','instrument','-w','-e','smb',f'smb://{args.host}:{port}/videos/','-e','scanHost',args.host,'-e','guest','true' if args.guest else 'false','-e','screenshots','true' if args.screenshots else 'false',package+'/'+package+'.Probe']
+command=['shell','am','instrument','-w','-e','smb',f'smb://{args.host}:{port}/videos/','-e','scanHost',args.host,'-e','guest','true' if args.guest else 'false','-e','screenshots','true' if args.screenshots else 'false','-e','perf','true' if args.perf else 'false',package+'/'+package+'.Probe']
 process=subprocess.Popen(adb+command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
 lines=[];first_frame=None;captured=set()
 def collect():

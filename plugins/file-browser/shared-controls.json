@@ -1,0 +1,20 @@
+{
+  "VideoControlsOverlay.java": {
+    "upstream": "https://github.com/buhanzhe/NativeWasmTv",
+    "path": "app/src/main/java/xiao/bu/tv/VideoControlsOverlay.java",
+    "sha256": "bb9f0192e38885648637cfc28952a79d8a722af9fc263d63012f1e3af4a1228b",
+    "revision": "ce22fdcce877fb2d6ef62237999eed307c2ab999"
+  },
+  "LoadingSpinnerView.java": {
+    "upstream": "https://github.com/buhanzhe/NativeWasmTv",
+    "path": "app/src/main/java/xiao/bu/tv/LoadingSpinnerView.java",
+    "sha256": "83538f6467f41e1949467eeb954b706242854a0298b1c57d27fbc93a8e2387d2",
+    "revision": "ce22fdcce877fb2d6ef62237999eed307c2ab999"
+  },
+  "PlaybackBrightness.java": {
+    "upstream": "https://github.com/buhanzhe/NativeWasmTv",
+    "path": "app/src/main/java/xiao/bu/tv/PlaybackBrightness.java",
+    "sha256": "61e901fcb5db636cea951b76fcf5b379f8adc64f84ab50aaefddc18071c161ba",
+    "revision": "ce22fdcce877fb2d6ef62237999eed307c2ab999"
+  }
+}

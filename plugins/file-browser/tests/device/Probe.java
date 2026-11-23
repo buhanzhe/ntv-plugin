@@ -18,6 +18,8 @@ import xiao.bu.tv.jar.ChannelPlugin;
 public final class Probe extends Instrumentation {
     Bundle args; Activity activity; ChannelPlugin plugin; View root; ClassLoader loader;
     StringBuilder report = new StringBuilder();
+    boolean cpuOverlayPaused;
+    final ComponentName cpuOverlay=new ComponentName("com.android.systemui","com.android.systemui.LoadAverageService");
     interface Read { boolean ready() throws Exception; }
     public void onCreate(Bundle arguments) { args=arguments; super.onCreate(arguments); start(); }
     void check(boolean ok,String text) { if(!ok)throw new AssertionError(text); log("PASS "+text); }
@@ -31,11 +33,11 @@ public final class Probe extends Instrumentation {
         return null;
     }
     void click(String title) { ui(()->{Button b=button(root,title);if(b==null)throw new AssertionError("Missing button "+title);b.performClick();}); }
-    ListView list()throws Exception{return (ListView)field(plugin,"list");}
+    GridView list()throws Exception{return (GridView)field(plugin,"list");}
     String message()throws Exception{return ((TextView)field(plugin,"status")).getText().toString();}
     void loaded()throws Exception { waitFor("directory loaded",()->!message().contains("正在读取"));check(!message().contains("失败"),"directory loads: "+((TextView)field(plugin,"path")).getText()+" / "+message()); }
     void row(String title)throws Exception {
-        loaded(); final ListView list=list(); final int[] index={-1};
+        loaded(); final GridView list=list(); final int[] index={-1};
         ui(()->{for(int i=0;i<list.getCount();i++)if(list.getAdapter().getItem(i).toString().endsWith(title)){index[0]=i;break;}
             if(index[0]<0)throw new AssertionError("Missing row "+title);list.requestFocusFromTouch();list.setSelection(index[0]);});
         waitForIdleSync();Thread.sleep(200);
@@ -46,6 +48,7 @@ public final class Probe extends Instrumentation {
     void playback(String name)throws Exception {
         waitFor(name+" prepare",()->{final boolean[] ready={false};ui(()->{try{VideoView v=video();ready[0]=v!=null&&v.isPlaying()&&v.getDuration()>0;}catch(Exception e){throw new RuntimeException(e);}});return ready[0];});
         VideoView v=video();Field media=VideoView.class.getDeclaredField("mMediaPlayer");media.setAccessible(true);
+        Object controls=field(plugin,"controller");check(controls.getClass().getSimpleName().equals("VideoControlsOverlay"),name+" reuses web-TV playback controls");
         MediaPlayer player=(MediaPlayer)media.get(v);check(player.getVideoWidth()>0&&player.getVideoHeight()>0,name+" decoded dimensions "+player.getVideoWidth()+"x"+player.getVideoHeight());
         int before=position();Thread.sleep(2200);int after=position();check(after>before+1000,name+" clock advances "+before+" -> "+after);
         log("CAPTURE "+name);Thread.sleep(1500);
@@ -61,9 +64,31 @@ public final class Probe extends Instrumentation {
         check(true,name+" foreground resume");
     }
     void back(){ui(()->{if(!((ChannelPlugin.NativePage)plugin).onBack())throw new AssertionError("Back unhandled");});}
+    void performance()throws Exception {
+        File directory=new File(activity.getExternalFilesDir(null),"subfolder");directory.mkdirs();
+        for(int i=0;i<600;i++)new File(directory,String.format(java.util.Locale.US,"clip-%03d.mp4",i)).createNewFile();
+        row("subfolder");loaded();check(list().getCount()==600,"performance directory contains 600 entries");
+        final ArrayList<Long> heartbeat=new ArrayList<>();final boolean[] running={true};
+        final Handler handler=new Handler(Looper.getMainLooper());
+        final Runnable pulse=new Runnable(){long last=SystemClock.uptimeMillis();public void run(){long now=SystemClock.uptimeMillis();if(running[0]){heartbeat.add(now-last);last=now;handler.postDelayed(this,16);}}};
+        ui(()->handler.post(pulse));
+        for(int i=0;i<20;i++){final int index=i*30;ui(()->{try{list().setSelection(index);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();Thread.sleep(32);}
+        ui(()->{running[0]=false;handler.removeCallbacks(pulse);});
+        Collections.sort(heartbeat);if(!heartbeat.isEmpty())log("PERF main_queue_p95_ms="+heartbeat.get(Math.min(heartbeat.size()-1,(int)(heartbeat.size()*.95)))+" samples="+heartbeat.size());
+        final long[] draw=new long[24];final int[] children={0};
+        ui(()->{try{
+            children[0]=list().getChildCount();android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(root.getWidth(),root.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);for(int i=0;i<28;i++){long start=System.nanoTime();root.draw(canvas);if(i>=4)draw[i-4]=System.nanoTime()-start;}bitmap.recycle();
+        }catch(Exception e){throw new RuntimeException(e);}});
+        Arrays.sort(draw);android.os.Debug.MemoryInfo memory=new android.os.Debug.MemoryInfo();android.os.Debug.getMemoryInfo(memory);
+        check(children[0]<24,"grid only instantiates visible cards: "+children[0]);
+        log("PERF software_draw_p95_ms="+(draw[22]/1000000.0)+" process_pss_kib="+memory.getTotalPss()+" java_heap_kib="+((Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1024));
+        back();loaded();
+    }
     public void onStart(){int result=Activity.RESULT_CANCELED;
         try {
             activity=startActivitySync(new Intent(getTargetContext(),ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            try{cpuOverlayPaused=activity.stopService(new Intent().setComponent(cpuOverlay));}catch(SecurityException ignored){}
             File jar=new File(activity.getFilesDir(),"file-browser.jar");
             if(jar.exists()&&!jar.delete())throw new IOException("Cannot replace probe-owned JAR");
             try(InputStream in=activity.getAssets().open("file-browser.jar");OutputStream out=new FileOutputStream(jar)){byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}
@@ -74,21 +99,24 @@ public final class Probe extends Instrumentation {
                 public void chooseFiles(android.webkit.ValueCallback<Uri[]> callback,String type,boolean multiple){callback.onReceiveValue(new Uri[]{Uri.fromFile(new File(activity.getExternalFilesDir(null),"sample.mp4"))});}
                 public void chooseDirectory(android.webkit.ValueCallback<Uri[]> callback){callback.onReceiveValue(null);}
             });activity.setContentView(root);}catch(Exception e){throw new RuntimeException(e);}});
-            check(Build.VERSION.SDK_INT==19,"Android 4.4 / API 19");loaded();
+            check(Build.VERSION.SDK_INT>=14,"Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT);loaded();
             if(Boolean.parseBoolean(args.getString("screenshots"))){
-                log("CAPTURE browser");Thread.sleep(2000);click("SMB");
-                waitFor("scan screenshots",()->{LinearLayout scan=(LinearLayout)field(plugin,"discovery");String text=((TextView)scan.getChildAt(1)).getText().toString();return text.contains("扫描完成")||text.contains("未发现");});
+                log("CAPTURE browser");Thread.sleep(2000);
+                row("本机存储");row("Android");row("data");row("xiao.bu.filebrowserprobe");row("files");loaded();log("CAPTURE media");Thread.sleep(2000);
+                click("外接存储");loaded();log("CAPTURE external");Thread.sleep(2000);click("SMB");
+                waitFor("scan screenshots",()->{LinearLayout scan=(LinearLayout)field(plugin,"discovery");String text=((TextView)scan.findViewWithTag("scan-status")).getText().toString();return text.contains("扫描完成")||text.contains("未发现");});
                 log("CAPTURE discovery");Thread.sleep(2000);click("手动连接");
                 ui(()->((android.view.inputmethod.InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0));
                 log("CAPTURE connection");Thread.sleep(2000);result=Activity.RESULT_OK;return;
             }
-            check(button(root,"选择目录")==null,"API21 directory picker hidden on KitKat");
+            check(button(root,"选择目录")==null,"modern directory picker hidden on old Android");
             row("本机存储");row("Android");row("data");row("xiao.bu.filebrowserprobe");row("files");loaded();
             check(list().getCount()==2,"local video filtering and subdirectory (text file hidden)");
             row("sample.mp4");playback("local");back();check(video()==null,"local return releases player");
+            if(Boolean.parseBoolean(args.getString("perf")))performance();
             click("SMB");
-            waitFor("LAN scan",()->{LinearLayout scan=(LinearLayout)field(plugin,"discovery");return scan!=null&&((TextView)scan.getChildAt(1)).getText().toString().contains("扫描完成");});
-            ui(()->{try{LinearLayout scan=(LinearLayout)field(plugin,"discovery");ListView devices=(ListView)scan.getChildAt(3);
+            waitFor("LAN scan",()->{LinearLayout scan=(LinearLayout)field(plugin,"discovery");return scan!=null&&((TextView)scan.findViewWithTag("scan-status")).getText().toString().contains("扫描完成");});
+            ui(()->{try{LinearLayout scan=(LinearLayout)field(plugin,"discovery");GridView devices=(GridView)scan.findViewWithTag("scan-devices");
                 int found=-1;for(int i=0;i<devices.getCount();i++)if(devices.getAdapter().getItem(i).equals(args.getString("scanHost")))found=i;
                 check(found>=0,"automatic LAN discovery found fixture host");
                 devices.performItemClick(null,found,found);
@@ -110,6 +138,6 @@ public final class Probe extends Instrumentation {
                 try{session.getClass().getMethod("list",String.class).invoke(session,args.getString("smb"));}finally{session.getClass().getMethod("close").invoke(session);}
             }}catch(Throwable detail){log("SMB_DIAGNOSTIC "+android.util.Log.getStackTraceString(detail));}
         }
-        finally{ui(()->{if(plugin!=null)plugin.dispose();if(activity!=null)activity.finish();});Bundle end=new Bundle();end.putString("stream",report.toString()+"FILE_BROWSER_RESULT="+(result==Activity.RESULT_OK?"PASS":"FAIL")+"\n");finish(result,end);}
+        finally{ui(()->{if(plugin!=null)plugin.dispose();if(activity!=null){if(cpuOverlayPaused)try{activity.startService(new Intent().setComponent(cpuOverlay));}catch(SecurityException ignored){}activity.finish();}});Bundle end=new Bundle();end.putString("stream",report.toString()+"FILE_BROWSER_RESULT="+(result==Activity.RESULT_OK?"PASS":"FAIL")+"\n");finish(result,end);}
     }
 }

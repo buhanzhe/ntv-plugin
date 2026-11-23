@@ -7,6 +7,9 @@ import struct
 import zipfile
 
 REPLACEMENTS = {
+    # BaseConfiguration probes this constant even when jcifs.encoding is set.
+    # SMB1 is disabled and SMB2 paths use UTF-16; the legacy OEM fallback can be ASCII.
+    b'Cp850': b'US-ASCII',
     b'org/bouncycastle/': b'xiao/bu/channel/files/crypto/bc/',
     b'org.bouncycastle.': b'xiao.bu.channel.files.crypto.bc.',
     b'java/lang/AutoCloseable': b'java/io/Closeable',

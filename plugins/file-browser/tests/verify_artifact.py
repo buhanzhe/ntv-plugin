@@ -12,6 +12,7 @@ with zipfile.ZipFile(jar) as archive:
     info = json.loads(archive.read('channel-plugin.json'))
     assert info['minSdk'] == 14 and info['api'] == 1 and info['native']
     dex = archive.read('classes.dex')
+    assert b'Cp850' not in dex, 'unsupported default OEM charset on Android 4.0.4'
     count, offset = struct.unpack_from('<II', dex, 64)  # DEX type_ids_size/off
     string_count, string_offset = struct.unpack_from('<II', dex, 56)
     def string(index):
@@ -28,7 +29,7 @@ with zipfile.ZipFile(jar) as archive:
         if name.startswith(('Ljava/', 'Ljavax/', 'Landroid/')):
             assert name in legacy_types or name == 'Landroid/provider/DocumentsContract;', name
     for forbidden in ['Ljava/lang/AutoCloseable;', 'Ljava/util/Objects;', 'Ljava/nio/charset/StandardCharsets;',
-                      'Landroid/webkit/WebView;', 'Landroid/app/Activity;']:
+                      'Landroid/webkit/WebView;']:
         assert forbidden not in types, forbidden
     assert 'Lxiao/bu/channel/files/FileBrowserPlugin;' in types
     assert not any(t.startswith('Lorg/bouncycastle/') for t in types), 'Android system BC package collision'
@@ -39,4 +40,8 @@ with zipfile.ZipFile(jar) as archive:
         type_index = struct.unpack_from('<I', dex, class_offset + i * 32)[0]
         name = string(struct.unpack_from('<I', dex, offset + type_index * 4)[0])
         assert not name.startswith('Lxiao/bu/tv/jar/'), name
+        parent_index=struct.unpack_from('<I',dex,class_offset+i*32+8)[0]
+        if parent_index!=0xffffffff:
+            parent=string(struct.unpack_from('<I',dex,offset+parent_index*4)[0])
+            assert parent not in {'Landroid/app/Activity;','Landroid/app/Service;','Landroid/webkit/WebView;'},name
 print('PASS artifact hash / API-14 metadata / compatibility references / host ABI ownership')

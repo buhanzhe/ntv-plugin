@@ -29,6 +29,10 @@ public final class SmbSession implements Closeable {
         config.setProperty("jcifs.smb.client.soTimeout", "10000");
         config.setProperty("jcifs.smb.client.responseTimeout", "10000");
         config.setProperty("jcifs.smb.client.disableSMB1", "true");
+        // ICS omits Cp850. SMB2 paths/credentials use Unicode; OEM is only a legacy fallback.
+        config.setProperty("jcifs.encoding", "US-ASCII");
+        config.setProperty("jcifs.smb.client.useUnicode", "true");
+        config.setProperty("jcifs.smb.client.forceUnicode", "true");
         CIFSContext base = new BaseContext(new PropertyConfiguration(config));
         context = user.isEmpty() ? base.withGuestCrendentials()
                 : base.withCredentials(new NtlmPasswordAuthenticator(domain, user, password));

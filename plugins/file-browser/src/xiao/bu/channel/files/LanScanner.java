@@ -15,8 +15,10 @@ public final class LanScanner implements Closeable {
         void finished(boolean limited);
     }
     private final Set<Socket> sockets = Collections.synchronizedSet(new HashSet<Socket>());
-    private final ExecutorService workers = Executors.newFixedThreadPool(24);
+    private final ExecutorService workers;
     private volatile boolean cancelled;
+    public LanScanner(){this(16);}
+    public LanScanner(int parallelism){workers=Executors.newFixedThreadPool(Math.max(1,Math.min(24,parallelism)));}
 
     public void start(final Listener listener) {
         Thread coordinator = new Thread(() -> {
