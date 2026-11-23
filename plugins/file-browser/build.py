@@ -79,7 +79,7 @@ with zipfile.ZipFile(jar, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         info.compress_type = zipfile.ZIP_DEFLATED
         archive.writestr(info, data)
     write('classes.dex', (dex / 'classes.dex').read_bytes())
-    write('channel-plugin.json', json.dumps(dict(api=1, version=2, minSdk=14, native=True,
+    write('channel-plugin.json', json.dumps(dict(api=1, version=3, minSdk=14, native=True,
           entry='xiao.bu.channel.files.FileBrowserPlugin')))
     for name in ['NOTICE', 'LICENSE-jcifs', 'LICENSE-slf4j', 'LICENSE-bouncycastle']:
         write(name, (HERE / name).read_bytes().replace(b'\r\n', b'\n'))

@@ -1,3 +1,3 @@
 #EXTM3U
 #EXTINF:-1 group-title="视频",文件浏览
-https://raw.githubusercontent.com/buhanzhe/ntv-plugin/e22e1f14f9d61fd1fbe1770ff598a92cdda02ca2/plugins/file-browser/dist/file-browser.jar?sha256=1a45fa94d7b4372ba9f2af888ae470fd9ed520398ac2e6586ff163fc42be2ed4
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/main/plugins/file-browser/dist/file-browser.jar?sha256=f220faea6c078edada7d33996ec87e45bb54d9ff5db447e9f7259fbbcec73ae2

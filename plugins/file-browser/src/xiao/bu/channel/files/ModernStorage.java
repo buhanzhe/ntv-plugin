@@ -9,6 +9,13 @@ import java.util.*;
 
 /** Isolated from the API-15 entry point; call only after the relevant SDK check. */
 final class ModernStorage {
+    static boolean canReadSharedStorage(Context context) { // API 23
+        return context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+    static void requestSharedStorage(android.app.Activity activity) { // API 23
+        activity.requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 0x4642);
+    }
     static File[] externalDirs(Context context) { return context.getExternalFilesDirs(null); } // API 19
     static List<BrowserEntry> documents(Context context, Uri tree) throws IOException { // API 21
         List<BrowserEntry> result = new ArrayList<>();

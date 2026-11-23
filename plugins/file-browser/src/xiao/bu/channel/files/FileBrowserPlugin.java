@@ -41,6 +41,8 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     private String playbackTitle="视频";
     private int generation;
     private boolean disposed, resume;
+    private boolean storagePermissionPending;
+    private boolean storagePermissionNeeded;
     private interface Task { List<BrowserEntry> run() throws Exception; }
 
     public View create(Context context, ClassLoader resources, JSONObject config, Host host) {
@@ -134,6 +136,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     private void navigate(BrowserEntry folder, boolean push) {
         if (push && current != null) stack.push(current);
         current = folder; path.setText("资料库  /  "+folder.name+"  ·  "+folder.location);
+        if (folder.kind == 0 && !ensureStoragePermission()) return;
         final SmbSession session = smb;
         load(() -> {
             if (folder.kind == 2) return session.list(folder.location);
@@ -145,6 +148,40 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
                 result.add(new BrowserEntry(file.getName(), file.getAbsolutePath(), file.isDirectory(), 0));
             return result;
         });
+    }
+    private boolean ensureStoragePermission() {
+        if (Build.VERSION.SDK_INT < 23 || Build.VERSION.SDK_INT > 32
+                || ModernStorage.canReadSharedStorage(context)) return true;
+        generation++;
+        storagePermissionNeeded = true;
+        if (pending != null) pending.cancel(true);
+        entries.clear(); changed();
+        status.setText("请允许读取本机视频；也可使用“选择目录”授权访问");
+        if (!storagePermissionPending && context instanceof android.app.Activity) {
+            storagePermissionPending = true;
+            final long deadline = SystemClock.uptimeMillis() + 30000;
+            ModernStorage.requestSharedStorage((android.app.Activity)context);
+            main.postDelayed(new Runnable() {
+                boolean dialogSeen;
+                public void run() {
+                    if (disposed || !storagePermissionPending) return;
+                    if (ModernStorage.canReadSharedStorage(context)) {
+                        storagePermissionPending = false;
+                        storagePermissionNeeded = false;
+                        if (current != null && current.kind == 0) navigate(current, false);
+                        return;
+                    }
+                    if (!root.hasWindowFocus()) dialogSeen = true;
+                    if (SystemClock.uptimeMillis() >= deadline || dialogSeen && root.hasWindowFocus()) {
+                        storagePermissionPending = false;
+                        status.setText("未获得读取权限，请点击刷新重试，或使用“选择目录”");
+                        return;
+                    }
+                    main.postDelayed(this, 500);
+                }
+            }, 500);
+        }
+        return false;
     }
     private void load(Task task) {
         int token = ++generation;final boolean preserveOrder=current==null&&storageTab==0; entries.clear(); changed(); status.setText("正在读取…");
@@ -314,6 +351,11 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     }
     public void setActive(boolean active) {
         foreground=active;
+        if (active && storagePermissionNeeded && Build.VERSION.SDK_INT >= 23
+                && ModernStorage.canReadSharedStorage(context)) {
+            storagePermissionNeeded = storagePermissionPending = false;
+            if (current != null && current.kind == 0) navigate(current, false);
+        }
         if (video != null) {
             if (!active) { resume = video.isPlaying(); video.pause();if(controller!=null)controller.hide(); }
             else if (resume) { video.start(); resume = false; }
