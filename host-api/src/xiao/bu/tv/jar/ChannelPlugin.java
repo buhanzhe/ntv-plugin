@@ -27,6 +27,14 @@ public interface ChannelPlugin {
         boolean isFullscreenEnabled();
         void setFullscreenEnabled(boolean enabled);
     }
+    /** Optional shared playback HUD. A new session identity resets the host's traffic samples. */
+    interface PlaybackHost extends FullscreenHost {
+        boolean isPlaybackDebugEnabled();
+        void setPlaybackDebugEnabled(boolean enabled);
+        // Main-thread snapshot. downloadedBytes counts upstream media reads for this session.
+        // Pass null when the plugin leaves playback.
+        void reportPlaybackDiagnostics(Object session, android.os.Bundle diagnostics);
+    }
     interface VodHost extends NativeHost {
         void playVod(String url, JSONObject headers);
         JSONObject python(JSONObject request) throws Exception;
