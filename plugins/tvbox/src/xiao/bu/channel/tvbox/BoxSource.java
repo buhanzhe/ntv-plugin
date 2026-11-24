@@ -47,12 +47,30 @@ final class BoxSource implements Closeable {
         huya = new HuyaLive(http);
     }
     BoxSource fork() {
-        BoxSource session = new BoxSource(context, host, assets, http.forSearch(), jars);
+        return fork(http.forSearch());
+    }
+    BoxSource homeSession() {
+        return fork(http.isolated());
+    }
+    private BoxSource fork(BoxHttp transport) {
+        BoxSource session = new BoxSource(context, host, assets, transport, jars);
         session.origin = origin;
         session.config = config;
         return session;
     }
     void cancelRequests() { if (!ownsJars) http.cancelRequests(); }
+
+    // Called on the browsing worker before subsequent category/detail/play requests.
+    void adoptHome(BoxSource prepared) {
+        if (prepared.current == null) return;
+        closeSpider();
+        origin = prepared.origin;
+        config = prepared.config;
+        current = prepared.current;
+        spider = prepared.spider;
+        prepared.spider = null;
+        if (spider instanceof JavaSpider) ((JavaSpider) spider).activate();
+    }
 
     static final class Site {
         final JSONObject config;

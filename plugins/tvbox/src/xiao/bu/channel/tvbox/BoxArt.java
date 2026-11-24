@@ -11,6 +11,12 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+import java.lang.ref.WeakReference;
 import org.json.JSONObject;
 import okhttp3.Response;
 
@@ -19,6 +25,7 @@ final class BoxArt {
     interface Ready { void image(Bitmap bitmap); }
     private static final int DOWNLOAD_LIMIT = 3 * 1024 * 1024;
     private final BoxHttp http;
+    private final int thumbnailEdge;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 2, 15, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
@@ -31,65 +38,118 @@ final class BoxArt {
         }
     };
     private volatile boolean closed;
-    private final java.util.WeakHashMap<ImageView,Integer> requests=new java.util.WeakHashMap<>();
-    private int sequence;
-    private final java.util.Map<String,java.util.List<Target>> inFlight=new java.util.HashMap<>();
+    private final WeakHashMap<ImageView, Target> requests = new WeakHashMap<>();
+    private final Map<String, ArtworkRequest> inFlight = new HashMap<>();
     private static final class Target {
-        final java.lang.ref.WeakReference<ImageView> view;final int request;final String url;final Ready ready;
-        Target(ImageView view,int request,String url,Ready ready){this.view=new java.lang.ref.WeakReference<>(view);this.request=request;this.url=url;this.ready=ready;}
+        final WeakReference<ImageView> view;
+        final String key;
+        final Ready ready;
+        ArtworkRequest request;
+
+        Target(ImageView view, String key, Ready ready) {
+            this.view = new WeakReference<>(view);
+            this.key = key;
+            this.ready = ready;
+        }
     }
 
-    BoxArt(BoxHttp http) {
+    private final class ArtworkRequest implements Runnable {
+        final String key, url;
+        final int edge;
+        final List<Target> targets = new ArrayList<>();
+
+        ArtworkRequest(String key, String url, int edge) {
+            this.key = key;
+            this.url = url;
+            this.edge = edge;
+        }
+
+        @Override public void run() {
+            if (closed) return;
+            Bitmap bitmap = cache.get(key);
+            if (bitmap == null) bitmap = fetch(url, edge);
+            if (closed) return;
+            if (bitmap != null) cache.put(key, bitmap);
+            Bitmap result = bitmap;
+            main.post(() -> {
+                inFlight.remove(key);
+                if (closed) return;
+                for (Target target : targets) {
+                    target.request = null;
+                    ImageView image = target.view.get();
+                    if (result != null && image != null && requests.get(image) == target) {
+                        image.setImageBitmap(result);
+                        if (target.ready != null) target.ready.image(result);
+                    }
+                }
+                targets.clear();
+            });
+        }
+    }
+
+    BoxArt(BoxHttp http, int thumbnailEdge) {
         this.http = http.forArtwork();
+        this.thumbnailEdge = thumbnailEdge;
         workers.allowCoreThreadTimeOut(true);
         frosting.allowCoreThreadTimeOut(true);
     }
 
-    void load(ImageView view, String url) { load(view,url,640); }
+    int thumbnailEdge() { return thumbnailEdge; }
+    void load(ImageView view, String url) { load(view,url,thumbnailEdge); }
     void load(ImageView view, String url, int edge) { load(view,url,edge,null); }
     void load(ImageView view, String url, int edge, Ready ready) {
         load(view,url,edge,ready,0);
     }
     private void load(ImageView view,String url,int edge,Ready ready,int retry) {
-        String cacheKey=edge+"\n"+url;
+        String cacheKey = edge + "\n" + url;
+        Target previous = requests.get(view);
+        if (previous != null && previous.key.equals(cacheKey) && previous.ready == null && ready == null
+                && (previous.request != null || view.getDrawable() != null)) return;
+        if (previous != null && previous.request != null) {
+            ArtworkRequest old = previous.request;
+            old.targets.remove(previous);
+            if (!old.key.equals(cacheKey) && old.targets.isEmpty() && workers.remove(old)) {
+                inFlight.remove(old.key);
+            }
+        }
+        Target target = new Target(view, cacheKey, ready);
+        requests.put(view, target);
         if (view.getBackground() == null && !(view instanceof BoxBackdrop)) {
             view.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                     new int[]{0xff2a4050, 0xff101d2a}));
         }
         view.setTag(url);
-        int request=++sequence;requests.put(view,request);
         Bitmap existing = url.isEmpty() ? null : cache.get(cacheKey);
         Bitmap preview=existing;
-        if(preview==null&&edge>640&&!url.isEmpty())preview=cached(url);
-        view.setImageBitmap(preview);
+        if(preview==null&&edge>thumbnailEdge&&!url.isEmpty())preview=cached(url);
+        if (preview != null || view.getDrawable() != null) view.setImageBitmap(preview);
         if(preview!=null&&ready!=null)ready.image(preview);
         if (url.isEmpty() || existing != null || closed) return;
-        Target target=new Target(view,request,url,ready);
-        java.util.List<Target> waiting=inFlight.get(cacheKey);
-        if(waiting!=null){waiting.add(target);return;}
-        waiting=new java.util.ArrayList<>();waiting.add(target);inFlight.put(cacheKey,waiting);
-        try{workers.execute(() -> {
-            if (closed) return;
-            Bitmap bitmap = cache.get(cacheKey);
-            if (bitmap == null) bitmap = fetch(url, edge);
-            if(closed)return;
-            if(bitmap!=null)cache.put(cacheKey, bitmap);
-            Bitmap result = bitmap;
-            main.post(() -> {
-                java.util.List<Target> targets=inFlight.remove(cacheKey);if(closed||targets==null||result==null)return;
-                for(Target item:targets){ImageView image=item.view.get();
-                    if(image!=null&&item.url.equals(image.getTag())&&Integer.valueOf(item.request).equals(requests.get(image))){
-                        image.setImageBitmap(result);if(item.ready!=null)item.ready.image(result);
-                    }
+        ArtworkRequest running = inFlight.get(cacheKey);
+        if (running != null) {
+            running.targets.add(target);
+            target.request = running;
+            return;
+        }
+        ArtworkRequest request = new ArtworkRequest(cacheKey, url, edge);
+        request.targets.add(target);
+        target.request = request;
+        inFlight.put(cacheKey, request);
+        try {
+            workers.execute(request);
+        } catch (java.util.concurrent.RejectedExecutionException full) {
+            inFlight.remove(cacheKey);
+            target.request = null;
+            if (retry < 3) main.postDelayed(() -> {
+                ImageView image = target.view.get();
+                if (!closed && image != null && requests.get(image) == target) {
+                    load(image, url, edge, ready, retry + 1);
                 }
-            });
-        });}catch(java.util.concurrent.RejectedExecutionException full){
-            java.util.List<Target> targets=inFlight.remove(cacheKey);
-            if(retry<3&&targets!=null)main.postDelayed(()->{for(Target item:targets){ImageView image=item.view.get();if(!closed&&image!=null&&item.url.equals(image.getTag())&&Integer.valueOf(item.request).equals(requests.get(image)))load(image,item.url,edge,item.ready,retry+1);}},500L*(retry+1));
+            }, 500L * (retry + 1));
         }
     }
 
-    Bitmap cached(String url) { return cache.get("640\n"+url); }
+    Bitmap cached(String url) { return cache.get(thumbnailEdge + "\n" + url); }
 
     void frost(Bitmap source, Ready ready) {
         if(closed)return;

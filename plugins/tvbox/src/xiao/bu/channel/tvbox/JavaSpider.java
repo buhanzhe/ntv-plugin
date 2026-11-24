@@ -223,6 +223,8 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
         return (Object[]) call(gateway.getMethod("proxy", Map.class), null, query);
     }
 
+    void activate() { server.set(this); }
+
     public void close() {
         server.clear(this);
         for (String method : new String[]{"close", "destroy"}) {
