@@ -16,6 +16,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
@@ -28,6 +29,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -173,6 +175,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private VodHost host;
     private BoxSource source;
     private BoxHttp http;
+    private BoxHttp browseHttp;
     private FrameLayout container;
     private ImageView backdropArt;
     private ImageView ambientArt;
@@ -188,11 +191,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private LinearLayout categoryButtons;
     private GridView grid;
     private View primary;
-    private Screen screen, stations, loadingHome;
+    private Screen screen, stations;
     private SiteHome currentSite;
     private String configUrl;
     private Future<?> pending;
     private BoxSource pendingHome;
+    private Dialog loadingDialog;
+    private String statusBeforeInlineLoading;
     private volatile boolean disposed;
     private int generation;
     private android.content.SharedPreferences authorizationPreferences;
@@ -205,7 +210,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         this.context = context;
         ui = new BoxUi(context,assets,(OkHttpClient)host.httpClient());
         http = new BoxHttp((OkHttpClient) host.httpClient());
-        source = new BoxSource(context, host, assets, http);
+        browseHttp = http.isolated();
+        source = new BoxSource(context, host, assets, browseHttp);
         homeLoads.allowCoreThreadTimeOut(true);
         int screenWidth = Math.max(context.getResources().getDisplayMetrics().widthPixels,
                 context.getResources().getDisplayMetrics().heightPixels);
@@ -305,11 +311,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             main.post(() -> {
                 if (disposed) return;
                 homes.clear();pages.clear();cancelRecommendations();
-                if (pending != null) {
-                    boolean provisional = screen == loadingHome;
-                    cancelPending();
-                    if (provisional && !history.isEmpty()) show(history.pop(), false);
-                }
+                if (pending != null) cancelPending();
                 if (!feedback) return;
                 String text = "网盘授权信息已更新，关闭并重新打开登录面板可刷新状态";
                 message(text);
@@ -353,13 +355,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void switchTab(Tab tab) {
-        if (screen.tab == tab && screen.landing) return;
-        if (pending != null) {
-            if (screen != loadingHome || tab != Tab.SITES && tab != Tab.SEARCH) return;
-            cancelPending();
-            // Discard the provisional page instead of leaving a loading screen in history.
-            if (!history.isEmpty()) show(history.pop(), false);
-        }
+        if (pending != null || screen.tab == tab && screen.landing) return;
         if (currentSite == null && tab != Tab.SITES && tab != Tab.SEARCH) return;
         switch (tab) {
             case SITES:
@@ -384,7 +380,10 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Screen unconfiguredScreen() {
         return new Screen(Tab.SITES, "站点", true, () -> {
-            if(!configUrl.isEmpty())return;
+            if (!configUrl.isEmpty()) {
+                primary = action(body, "重新加载", () -> openRepository(configUrl, true));
+                return;
+            }
             TextView hint=ui.text("请在插件地址的 url 参数中指定配置源",24,BoxUi.SUB);
             hint.setPadding(0,ui.px(24),0,ui.px(16));body.addView(hint);
             body.addView(ui.text("tvbox.jar?url=配置地址",22,BoxUi.TEXT));
@@ -392,7 +391,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void openRepository(String url, boolean topLevel) {
-        load(() -> {
+        load("正在加载配置…", () -> {
             source.load(url);
             List<BoxSource.Site> sites = source.sites();
             List<BoxSource.Repository> repos = source.repositories();
@@ -431,10 +430,6 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             currentSite=cached;show(homeScreen(cached),true);if(!hasVideos(cached.videos)&&cached.notice.isEmpty())startRecommendations(cached);
             return;
         }
-        currentSite = new SiteHome(site, null, null, null, "正在加载站点…");
-        Screen owner = homeScreen(currentSite);
-        show(owner, true);
-        loadingHome = owner;
         BoxSource session = source.homeSession();
         pendingHome = session;
         int request = ++generation;
@@ -457,9 +452,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                         data.optJSONObject("filters"), notice);
                 homeResults.post(() -> finishHome(request, session, model));
             });
+            showLoading("正在加载站点…");
         } catch (java.util.concurrent.RejectedExecutionException busy) {
             pendingHome = null;
-            loadingHome = null;
             session.close();
             message("站点请求仍在结束，请稍后从站点列表重试，或使用搜索");
         }
@@ -475,8 +470,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             return;
         }
         pendingHome = null;
-        pending = null;
-        loadingHome = null;
+        finishLoading();
         worker.execute(() -> {
             try {
                 source.adoptHome(session);
@@ -488,7 +482,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (model.notice.isEmpty() || model.categories != null || hasVideos(model.videos)) {
             homes.put(siteKey(model.site), model);
         }
-        show(homeScreen(model), false);
+        show(homeScreen(model), true);
         if (!hasVideos(model.videos) && model.notice.isEmpty()) startRecommendations(model);
     }
     private static String siteKey(BoxSource.Site site) { return site.origin + "\n" + site.key + "\n" + site.api; }
@@ -867,7 +861,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         String cacheKey=siteKey(site)+"\n"+type+"\n"+page+"\n"+values;
         JSONObject ready=search.isEmpty()?pages.get(cacheKey):null;
         if(ready!=null){showListing(model,label,type,search,page,ready,push);return;}
-        load(() -> {
+        load("正在加载列表…", () -> {
             source.select(site);
             JSONObject result=search.isEmpty()?source.category(type,page,values):source.search(search,page);
             return () -> {if(search.isEmpty())pages.put(cacheKey,result);showListing(model,label,type,search,page,result,push);};
@@ -992,7 +986,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private void runSiteAction(BoxSource.Site site, String command) {
         homes.remove(siteKey(site));pages.clear();cancelRecommendations();
         authorizationFeedbackUntil = android.os.SystemClock.uptimeMillis() + 5 * 60 * 1000L;
-        load(() -> {
+        load("正在处理站点操作…", () -> {
             source.select(site);
             JSONObject result = source.action(command);
             String text = result.optString("toast");
@@ -1002,7 +996,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void detail(BoxSource.Site site, JSONObject item) {
         Tab from = screen.tab;
-        load(() -> {
+        load("正在加载详情…", () -> {
             String cacheKey=siteKey(site)+"\ndetail\n"+item.optString("vod_id");JSONObject data=pages.get(cacheKey);
             if(data==null){source.select(site);data=source.detail(item.optString("vod_id"));}
             JSONArray list = data.optJSONArray("list");
@@ -1245,7 +1239,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void play(BoxSource.Site site, String flag, String id, String title, PlayLine line, int index) {
         authorizationFeedbackUntil = 0;
-        load(() -> {
+        load("正在解析播放地址…", () -> {
             source.select(site);
             JSONObject result = source.play(flag, id);
             JSONObject headers = result.optJSONObject("header");
@@ -1515,29 +1509,102 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         }
     }
 
-    private void load(Load operation) {
+    private void load(String title, Load operation) {
         if (disposed || pending != null) return;
         int request = ++generation;
-        message("正在加载…");
         pending = worker.submit(() -> {
             try {
                 Runnable result = operation.run();
                 main.post(() -> {
                     if (disposed || generation != request) return;
-                    pending = null;
-                    message("");
+                    finishLoading();
                     result.run();
                 });
             } catch (Exception | LinkageError error) {
                 main.post(() -> {
                     if (disposed || generation != request) return;
-                    pending = null;
+                    finishLoading();
                     String detail = error instanceof IOException ? error.getMessage() : error.getClass().getSimpleName();
                     message("加载失败 · " + (detail == null ? "请检查站点" : detail));
                     if (!root.isShown() && playbackLine != null) host.status(status.getText().toString());
                 });
             }
         });
+        showLoading(title);
+    }
+
+    private void showLoading(String title) {
+        if (context instanceof Activity && !((Activity) context).isFinishing()) {
+            Dialog dialog = new Dialog(context) {
+                @Override public void onBackPressed() {
+                    if (loadingDialog == this && pending != null) cancelPending();
+                }
+            };
+            dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+            dialog.setCanceledOnTouchOutside(false);
+
+            LinearLayout panel = ui.vertical();
+            panel.setPadding(ui.px(24), ui.px(18), ui.px(24), ui.px(12));
+            panel.setBackgroundDrawable(ui.glass(0xf52c3d49, 24));
+            panel.setFocusableInTouchMode(true);
+            LinearLayout heading = ui.horizontal();
+            heading.setGravity(Gravity.CENTER_VERTICAL);
+            ProgressBar spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
+            spinner.setIndeterminate(true);
+            spinner.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            int size = ui.px(26);
+            heading.addView(spinner, new LinearLayout.LayoutParams(size, size));
+            TextView caption = ui.text(title, 24, BoxUi.TEXT);
+            caption.setPadding(ui.px(14), 0, 0, 0);
+            heading.addView(caption, new LinearLayout.LayoutParams(0, -2, 1));
+            panel.addView(heading, new LinearLayout.LayoutParams(-1, ui.px(52)));
+
+            TextView cancel = ui.text("取消加载 · 返回键", 18, BoxUi.SUB);
+            cancel.setGravity(Gravity.CENTER);
+            cancel.setPadding(ui.px(14), 0, ui.px(14), 0);
+            cancel.setBackgroundDrawable(ui.capsuleGlass(0x555d7586));
+            cancel.setContentDescription("取消加载，遥控器可按返回键");
+            // Focus stays on the panel so a repeated OK cannot cancel or restart the request.
+            cancel.setFocusable(false);
+            cancel.setOnClickListener(view -> {
+                if (loadingDialog == dialog && pending != null) cancelPending();
+            });
+            LinearLayout.LayoutParams cancelBounds = new LinearLayout.LayoutParams(-2, ui.px(42));
+            cancelBounds.gravity = Gravity.RIGHT;
+            panel.addView(cancel, cancelBounds);
+            dialog.setContentView(panel);
+            Window window = dialog.getWindow();
+            if (window != null) {
+                window.setBackgroundDrawable(new ColorDrawable(0));
+                window.setDimAmount(0.4f);
+                window.setWindowAnimations(0);
+            }
+            try {
+                dialog.show();
+                loadingDialog = dialog;
+                if (window != null) {
+                    int availableWidth = context.getResources().getDisplayMetrics().widthPixels - ui.px(32);
+                    window.setLayout(Math.min(ui.px(396), availableWidth), -2);
+                }
+                panel.requestFocus();
+                return;
+            } catch (WindowManager.BadTokenException detached) {
+                // The host may be finishing while a configuration request is starting.
+            }
+        }
+        statusBeforeInlineLoading = status.getText().toString();
+        message(title);
+    }
+
+    private void finishLoading() {
+        pending = null;
+        Dialog dialog = loadingDialog;
+        loadingDialog = null;
+        if (dialog != null) dialog.dismiss();
+        if (statusBeforeInlineLoading != null) {
+            message(statusBeforeInlineLoading);
+            statusBeforeInlineLoading = null;
+        }
     }
 
     private void message(String text) {
@@ -1584,13 +1651,11 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     @Override public boolean onBack() {
-        if (dashPlayer != null) { if (!dashPlayer.hideControls()) closeDashPlayer(); return true; }
         if (pending != null) {
-            boolean provisional = screen == loadingHome;
             cancelPending();
-            if (provisional && !history.isEmpty()) show(history.pop(), false);
             return true;
         }
+        if (dashPlayer != null) { if (!dashPlayer.hideControls()) closeDashPlayer(); return true; }
         if (history.isEmpty()) return false;
         show(history.pop(), false);
         return true;
@@ -1599,14 +1664,14 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private void cancelPending() {
         generation++;
         pending.cancel(true);
-        pending = null;
         if (pendingHome != null) {
             pendingHome.cancelRequests();
             pendingHome = null;
             homeLoads.purge();
+        } else {
+            browseHttp.cancelRequests();
         }
-        loadingHome = null;
-        message("");
+        finishLoading();
     }
 
     @Override public void setActive(boolean active) {
