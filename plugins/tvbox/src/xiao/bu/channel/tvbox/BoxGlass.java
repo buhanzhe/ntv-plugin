@@ -8,7 +8,7 @@ import android.view.View;
 final class BoxGlass extends Drawable {
     private final View panel, scene;
     private final float radius, stroke;
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
     private final Path outline = new Path();
     private final RectF area = new RectF(), destination = new RectF();
     private final int[] panelPosition = new int[2], scenePosition = new int[2];
@@ -44,16 +44,16 @@ final class BoxGlass extends Drawable {
     }
     private void shaders() {
         boolean silver=active&&style>0&&style!=3;
-        int[] colors=silver?new int[]{0xfff6f8fa,0xffb7c2ca,0xffc0c9d0,0xffedf1f4}:
-                style==0?new int[]{0x886a8295,0x66233243,0x70101d2a,0x88516373}:
-                style==3?new int[]{0x997f9ab5,0x77465e79,0x66364b63,0x887b93aa}:
-                style==2||selected?new int[]{0xc596a2ad,0xaa536372,0xa6324453,0xbb758591}:
-                new int[]{0xa575818a,0x80303f4a,0x9927333e,0xa05b6a75};
-        tint=new LinearGradient(0,area.top,0,area.bottom,colors,new float[]{0,.2f,.72f,1},Shader.TileMode.CLAMP);
+        int[] colors=silver?new int[]{0xfff9fbfd,0xffd9e2ea,0xffedf3f8}:
+                style==0?new int[]{0x663b4b5d,0x55202e3e,0x66304050}:
+                style==3?new int[]{0x81a7b6c5,0x56677e95,0x687a8ea2}:
+                style==2||selected?new int[]{0x80d3e0eb,0x66526475,0x78485c6e}:
+                new int[]{0x60a5b8c7,0x3d465968,0x50465866};
+        tint=new LinearGradient(0,area.top,0,area.bottom,colors,new float[]{0,.56f,1},Shader.TileMode.CLAMP);
         rim=new LinearGradient(0,area.top,area.right,area.bottom,
-                new int[]{active?0xfff7fbff:0xcee3ebf1,0x395e6d79,0x29485866,active?0xeef0f7ff:0x99bac8d3},null,Shader.TileMode.CLAMP);
+                new int[]{active?0xfff7fbff:0xb3e3edf5,0x45677b8d,0x34465b70,active?0xd9eaf3fc:0x708a9eaf},null,Shader.TileMode.CLAMP);
         gleam=new RadialGradient(area.left,area.top,Math.max(1,area.width()*1.8f),
-                new int[]{style==0?0x40e5f2ff:0x3affffff,0x00ffffff},null,Shader.TileMode.CLAMP);
+                new int[]{style==0?0x1fe5f2ff:0x20ffffff,0x00ffffff},null,Shader.TileMode.CLAMP);
     }
     @Override public void draw(Canvas canvas) {
         if(style==3&&!active&&!selected)return;
@@ -74,7 +74,7 @@ final class BoxGlass extends Drawable {
         paint.setShader(rim); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(stroke);
         canvas.drawRoundRect(area,radius,radius,paint); paint.setShader(null); paint.setStyle(Paint.Style.FILL);
         if(active){
-            paint.setColor(0x55ffffff);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(stroke*3);
+            paint.setColor(0x35ffffff);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(stroke*2);
             canvas.drawRoundRect(area,radius,radius,paint);paint.setStyle(Paint.Style.FILL);
         }
     }

@@ -186,7 +186,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (!(base instanceof VodHost)) throw new IOException("请更新 nTv 以运行 TVBox");
         host = (VodHost) base;
         this.context = context;
-        ui = new BoxUi(context);
+        ui = new BoxUi(context,(OkHttpClient)host.httpClient());
         http = new BoxHttp((OkHttpClient) host.httpClient());
         source = new BoxSource(context, host, assets, http);
         art = new BoxArt(http);
@@ -194,7 +194,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         container.setBackgroundDrawable(ui.backdrop());
         ambientArt=new ImageView(context);ambientArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
         container.addView(ambientArt,new FrameLayout.LayoutParams(-1,-1));
-        backdropArt = ui.imageView();backdropArt.setScaleType(ImageView.ScaleType.CENTER_CROP);backdropArt.setVisibility(View.GONE);
+        backdropArt = new BoxBackdrop(context,0);backdropArt.setVisibility(View.GONE);
         container.addView(backdropArt,new FrameLayout.LayoutParams(-1,-1));
         backdropShade = new View(context);
         backdropShade.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xee061019,0xaa061019,0x19061019}));
@@ -535,7 +535,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             hero.addView(fade, new FrameLayout.LayoutParams(-1, -1));
             info.setGravity(fullBackdrop?Gravity.TOP:Gravity.CENTER_VERTICAL);
             info.setPadding(ui.px(fullBackdrop?12:40), ui.px(fullBackdrop?60:24), ui.px(28), ui.px(24));
-            TextView eyebrow = ui.text(site.name + "  ·  " + metadata(video, "vod_year", "vod_remarks"), 22, BoxUi.SUB);
+            String facts=metadata(video,"vod_class","vod_year","vod_remarks");
+            String sourceName=BlUi.plain(site.name).replaceFirst("^[^\\p{L}\\p{N}]+","").split("[|｜丨┃│¦]",2)[0].trim();
+            TextView eyebrow = ui.text(sourceName+(facts.isEmpty()?"":"  ·  "+facts), 21, BoxUi.SUB);
             eyebrow.setSingleLine(true); eyebrow.setEllipsize(TextUtils.TruncateAt.END);
             info.addView(eyebrow, new LinearLayout.LayoutParams(-1, ui.px(30)));
             TextView title = ui.displayTitle(videoName(video));
@@ -1243,22 +1245,21 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void ambientBackdrop() {
         backdropArt.setVisibility(View.GONE);
-        backdropShade.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xbb07121b,0xd507121b,0xd007121b}));
+        backdropShade.setBackgroundDrawable(BoxBackdrop.scrim(false));
         backdropShade.setVisibility(View.VISIBLE);
     }
 
     private void backdrop(String url,boolean cinema) {
         if(cinema){
             backdropArt.setVisibility(View.VISIBLE);
-            backdropShade.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                    new int[]{0xe6061019,0x99061019,0x19061019}));
+            backdropShade.setBackgroundDrawable(BoxBackdrop.scrim(true));
             backdropShade.setVisibility(View.VISIBLE);
         }else ambientBackdrop();
         if(url.equals(backdropUrl)&&backdropArt.getDrawable()!=null)return;
         backdropUrl=url;int request=++backdropGeneration;
-        art.load(backdropArt,url,Math.min(1280,Math.max(context.getResources().getDisplayMetrics().widthPixels,
-                context.getResources().getDisplayMetrics().heightPixels)),bitmap -> art.frost(bitmap,blurred -> {
+        int edge=Math.min(1440,Math.round(Math.max(context.getResources().getDisplayMetrics().widthPixels,
+                context.getResources().getDisplayMetrics().heightPixels)*1.25f));
+        art.load(backdropArt,url,edge,bitmap -> art.frost(bitmap,blurred -> {
             if(disposed||request!=backdropGeneration)return;
             ambientArt.setTag(url);ambientArt.setImageBitmap(blurred);sidebarGlass.image(blurred);
         }));
@@ -1318,7 +1319,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         Set<String> values = new LinkedHashSet<>();
         for (String key : keys) {
             String value = BlUi.plain(item.optString(key)).trim();
-            if (!value.isEmpty()) values.add(value);
+            if (!value.isEmpty()&&!value.equals("0")&&!value.equalsIgnoreCase("null")&&!value.equalsIgnoreCase("undefined")) values.add(value);
         }
         return TextUtils.join("  ·  ", values);
     }
@@ -1376,6 +1377,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (sniffer != null) sniffer.close();
         if (pending != null) pending.cancel(true);
         if (art != null) art.close();
+        if (ui != null) ui.close();
         main.removeCallbacksAndMessages(null);
         worker.execute(() -> { if (source != null) source.close(); });
         worker.shutdown();

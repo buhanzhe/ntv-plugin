@@ -24,7 +24,7 @@ import xiao.bu.channel.bl.BlUi;
 /** Native glass styling with bounded, static artwork blur; no frame capture. */
 final class BoxUi extends BlUi {
     static final int TEXT = 0xfff4f8ff, SUB = 0xffb8cbe1, ACCENT = 0xffe7f6ff;
-    private android.graphics.Typeface display;
+    private final BoxTypography typography;
     private BoxGlass material;
     void material(BoxGlass value){material=value;}
     Drawable navigationFocus(Button button){return material==null?navigationFocus():material.control(button,px(22),3);}
@@ -32,19 +32,21 @@ final class BoxUi extends BlUi {
     android.content.res.ColorStateList controlText(){
         return new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_pressed},new int[]{}},new int[]{0xff17222b,0xff17222b,TEXT});
     }
-    BoxUi(Context context) {
+    BoxUi(Context context,okhttp3.OkHttpClient transport) {
         super(context);
-        try { display=android.graphics.Typeface.createFromAsset(context.getAssets(),"fonts/arphic-gbsn00lp.ttf"); }
-        catch(RuntimeException unavailable) { display=android.graphics.Typeface.SERIF; }
+        typography=new BoxTypography(context,transport);
     }
     TextView displayTitle(String value) {
-        TextView t=text(value,84,TEXT);t.setTypeface(display);t.getPaint().setFakeBoldText(true);
-        t.setLineSpacing(px(3),1f);return t;
+        TextView t=text(value,80,TEXT);typography.title(t);
+        t.setLineSpacing(px(6),1f);return t;
     }
+    void close(){typography.close();}
+    void displayCaption(TextView view){typography.title(view);}
 
     @Override public TextView text(String value, int size, int color) {
         TextView t=super.text(value, size, color == BlUi.SUB ? SUB : color == BlUi.TEXT ? TEXT : color);
-        t.setTypeface(android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL));return t;
+        t.setTypeface(android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL));
+        t.getPaint().setSubpixelText(true);return t;
     }
 
     GradientDrawable glass(int color, int radius) {
@@ -141,33 +143,13 @@ final class BoxUi extends BlUi {
             }
         };
         g.setNumColumns(columns); g.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
-        g.setHorizontalSpacing(px(14)); g.setVerticalSpacing(px(14));
+        g.setHorizontalSpacing(px(18)); g.setVerticalSpacing(px(20));
         g.setPadding(px(3), px(12), px(3), px(12)); g.setClipToPadding(false);
         g.setSelector(selector()); g.setDrawSelectorOnTop(true); return g;
     }
 
-    public ImageView imageView() { return imageView(false); }
-    ImageView heroImage() { return imageView(true); }
-    private ImageView imageView(boolean topCrop) {
-        return new ImageView(context) {
-            { if (android.os.Build.VERSION.SDK_INT < 18) setLayerType(LAYER_TYPE_SOFTWARE, null);if(topCrop)setScaleType(ScaleType.MATRIX); }
-            private final Path outline = new Path();
-            private int matrixWidth,matrixHeight,drawableWidth,drawableHeight;
-            @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
-                super.onSizeChanged(w, h, oldW, oldH);
-                outline.reset(); outline.addRoundRect(new RectF(0, 0, w, h), px(16), px(16), Path.Direction.CW);
-            }
-            @Override protected void onDraw(Canvas canvas) {
-                if(topCrop&&getDrawable()!=null&&getDrawable().getIntrinsicWidth()>0&&getDrawable().getIntrinsicHeight()>0&&(matrixWidth!=getWidth()||matrixHeight!=getHeight()||drawableWidth!=getDrawable().getIntrinsicWidth()||drawableHeight!=getDrawable().getIntrinsicHeight())){
-                    matrixWidth=getWidth();matrixHeight=getHeight();drawableWidth=getDrawable().getIntrinsicWidth();drawableHeight=getDrawable().getIntrinsicHeight();
-                    float scale=Math.max((float)getWidth()/getDrawable().getIntrinsicWidth(),(float)getHeight()/getDrawable().getIntrinsicHeight());
-                    android.graphics.Matrix matrix=new android.graphics.Matrix();matrix.setScale(scale,scale);matrix.postTranslate((getWidth()-getDrawable().getIntrinsicWidth()*scale)/2f,0);
-                    if(!matrix.equals(getImageMatrix()))setImageMatrix(matrix);
-                }
-                int save = canvas.save(); canvas.clipPath(outline); super.onDraw(canvas); canvas.restoreToCount(save);
-            }
-        };
-    }
+    public ImageView imageView() { return new BoxImage(context,px(20)); }
+    ImageView heroImage() { return new BoxBackdrop(context,px(24)); }
 
     Drawable navigationIcon(int kind) { return icon(kind,false); }
     Drawable actionIcon(int kind) { return icon(kind,true); }

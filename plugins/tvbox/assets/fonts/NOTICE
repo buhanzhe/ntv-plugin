@@ -1,0 +1,10 @@
+TVBox display typography uses the original AR PL SungtiL GB (文鼎 PL 简报宋), version 2.11.
+Copyright (C) 1999 Arphic Technology Co., Ltd.
+The unmodified font is available on demand from the pinned NativeWasmTv repository file:
+https://raw.githubusercontent.com/buhanzhe/NativeWasmTv/03a02206f2b626d0e80be40fa960504068912ce1/app/src/main/assets/fonts/arphic-gbsn00lp.ttf
+SHA-256: 705ec2dba81eaee1208e4ed5d3ff23ab259292e8e0e163ea3de297ef1317007a
+Original vendor information: https://www.arphic.com.cn/2022/01/21/plfont/
+The original ARPHIC PUBLIC LICENSE is included verbatim in license/english,
+license/big5, and license/gb. The downloaded font is not modified or renamed internally.
+The plugin stores the verified font in its private font cache; no font bitmap or
+high-resolution UI mockup is packaged as a runtime texture.

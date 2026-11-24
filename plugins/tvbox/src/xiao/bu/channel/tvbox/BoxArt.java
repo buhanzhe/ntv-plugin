@@ -31,6 +31,8 @@ final class BoxArt {
         }
     };
     private volatile boolean closed;
+    private final java.util.WeakHashMap<ImageView,Integer> requests=new java.util.WeakHashMap<>();
+    private int sequence;
 
     BoxArt(BoxHttp http) {
         this.http = http;
@@ -42,15 +44,17 @@ final class BoxArt {
     void load(ImageView view, String url, int edge) { load(view,url,edge,null); }
     void load(ImageView view, String url, int edge, Ready ready) {
         String cacheKey=edge+"\n"+url;
-        if (view.getBackground() == null) {
+        if (view.getBackground() == null && !(view instanceof BoxBackdrop)) {
             view.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                     new int[]{0xff2a4050, 0xff101d2a}));
         }
         view.setTag(url);
+        int request=++sequence;requests.put(view,request);
         Bitmap existing = url.isEmpty() ? null : cache.get(cacheKey);
-        if(existing==null&&edge>640&&!url.isEmpty())existing=cached(url);
-        view.setImageBitmap(existing);
-        if(existing!=null&&ready!=null)ready.image(existing);
+        Bitmap preview=existing;
+        if(preview==null&&edge>640&&!url.isEmpty())preview=cached(url);
+        view.setImageBitmap(preview);
+        if(preview!=null&&ready!=null)ready.image(preview);
         if (url.isEmpty() || existing != null || closed) return;
         workers.execute(() -> {
             if (closed) return;
@@ -60,7 +64,7 @@ final class BoxArt {
             cache.put(cacheKey, bitmap);
             Bitmap result = bitmap;
             main.post(() -> {
-                if (!closed && url.equals(view.getTag())) {
+                if (!closed && url.equals(view.getTag()) && Integer.valueOf(request).equals(requests.get(view))) {
                     view.setImageBitmap(result);
                     if(ready!=null)ready.image(result);
                 }
@@ -74,7 +78,7 @@ final class BoxArt {
         if(closed)return;
         frosting.execute(() -> {
             if(closed)return;
-            float scale=Math.min(1f,96f/Math.max(source.getWidth(),source.getHeight()));
+            float scale=Math.min(1f,192f/Math.max(source.getWidth(),source.getHeight()));
             int width=Math.max(1,Math.round(source.getWidth()*scale)),height=Math.max(1,Math.round(source.getHeight()*scale));
             Bitmap sample=Bitmap.createScaledBitmap(source,width,height,true);
             int[] pixels=new int[width*height],scratch=new int[pixels.length];
@@ -82,13 +86,19 @@ final class BoxArt {
             if(sample!=source)sample.recycle();
             for(int pass=0;pass<4;pass++){
                 for(int axis=0;axis<2;axis++){
-                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+                    int lines=axis==0?height:width,length=axis==0?width:height;
+                    for(int line=0;line<lines;line++){
                         int red=0,green=0,blue=0;
-                        for(int k=-3;k<=3;k++){
-                            int index=axis==0?y*width+Math.max(0,Math.min(width-1,x+k)):Math.max(0,Math.min(height-1,y+k))*width+x;
-                            int color=pixels[index];red+=(color>>16)&255;green+=(color>>8)&255;blue+=color&255;
+                        for(int k=-6;k<=6;k++){
+                            int at=Math.max(0,Math.min(length-1,k));int color=pixels[axis==0?line*width+at:at*width+line];
+                            red+=(color>>16)&255;green+=(color>>8)&255;blue+=color&255;
                         }
-                        scratch[y*width+x]=0xff000000|((red/7)<<16)|((green/7)<<8)|(blue/7);
+                        for(int at=0;at<length;at++){
+                            scratch[axis==0?line*width+at:at*width+line]=0xff000000|((red/13)<<16)|((green/13)<<8)|(blue/13);
+                            int previous=Math.max(0,at-6),next=Math.min(length-1,at+7);
+                            int remove=pixels[axis==0?line*width+previous:previous*width+line],add=pixels[axis==0?line*width+next:next*width+line];
+                            red+=((add>>16)&255)-((remove>>16)&255);green+=((add>>8)&255)-((remove>>8)&255);blue+=(add&255)-(remove&255);
+                        }
                     }
                     int[] swap=pixels;pixels=scratch;scratch=swap;
                 }
@@ -123,12 +133,20 @@ final class BoxArt {
                 BitmapFactory.decodeByteArray(data, 0, data.length, options);
                 if (options.outWidth <= 0 || options.outHeight <= 0) return null;
                 options.inSampleSize = 1;
-                while (Math.max(options.outWidth, options.outHeight) / (options.inSampleSize * 2) >= edge) {
+                long pixels=Math.min(2000000,Runtime.getRuntime().maxMemory()/64);
+                while ((long)(options.outWidth/options.inSampleSize)*(options.outHeight/options.inSampleSize)>pixels
+                        || Math.max(options.outWidth,options.outHeight)/options.inSampleSize>edge*2f) {
                     options.inSampleSize *= 2;
                 }
                 options.inJustDecodeBounds = false;
-                options.inPreferredConfig = Bitmap.Config.RGB_565;
-                return BitmapFactory.decodeByteArray(data, 0, data.length, options);
+                options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+                Bitmap decoded=BitmapFactory.decodeByteArray(data,0,data.length,options);
+                if(decoded==null)return null;
+                int longest=Math.max(decoded.getWidth(),decoded.getHeight());
+                if(longest<=edge)return decoded;
+                float scale=(float)edge/longest;
+                Bitmap result=Bitmap.createScaledBitmap(decoded,Math.max(1,Math.round(decoded.getWidth()*scale)),Math.max(1,Math.round(decoded.getHeight()*scale)),true);
+                if(result!=decoded)decoded.recycle();return result;
             }
         } catch (Exception ignored) {
             return null;
@@ -148,5 +166,6 @@ final class BoxArt {
         frosting.shutdownNow();
         main.removeCallbacksAndMessages(null);
         cache.evictAll();
+        requests.clear();
     }
 }
