@@ -175,6 +175,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private Screen screen, stations;
     private SiteHome currentSite;
     private String configUrl;
+    private BoxConfigurations configurations;
     private Future<?> pending;
     private volatile boolean disposed;
     private int generation;
@@ -212,30 +213,30 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         root.setOrientation(LinearLayout.HORIZONTAL);
         root.setBaselineAligned(false);
         root.setBackgroundColor(0x00000000);
-        root.setPadding(ui.px(24), ui.px(24), ui.px(12), ui.px(24));
+        root.setPadding(ui.px(24), ui.px(32), ui.px(32), ui.px(24));
         boolean compact = context.getResources().getDisplayMetrics().widthPixels < ui.px(960);
         root.addView(sidebar(), new LinearLayout.LayoutParams(ui.px(compact ? 138 : 170), -1));
         LinearLayout page = ui.vertical();
-        page.setPadding(ui.px(26), ui.px(4), ui.px(16), 0);
+        page.setPadding(ui.px(28), 0, 0, 0);
         root.addView(page, new LinearLayout.LayoutParams(0, -1, 1));
         LinearLayout header = ui.horizontal();
         heading = ui.title("");
         heading.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.px(30));
         heading.setSingleLine(true);
         heading.setEllipsize(TextUtils.TruncateAt.END);
-        header.addView(heading, new LinearLayout.LayoutParams(0, ui.px(50), 1));
+        header.addView(heading, new LinearLayout.LayoutParams(0, ui.px(56), 1));
         categoryTabs = new HorizontalScrollView(context);
         categoryTabs.setHorizontalScrollBarEnabled(false);
         categoryButtons = ui.horizontal();
         categoryTabs.addView(categoryButtons);
         categoryTabs.setVisibility(View.GONE);
-        header.addView(categoryTabs, new LinearLayout.LayoutParams(0, ui.px(50), 1));
+        header.addView(categoryTabs, new LinearLayout.LayoutParams(0, ui.px(56), 1));
         actions = ui.horizontal();
         header.addView(actions, new LinearLayout.LayoutParams(-2, -2));
         TextView clock = ui.text("", 24, BoxUi.TEXT);
         clock.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        clock.setPadding(ui.px(12), 0, 0, 0);
-        header.addView(clock, new LinearLayout.LayoutParams(ui.px(88), ui.px(50)));
+        clock.setPadding(ui.px(16), 0, 0, 0);
+        header.addView(clock, new LinearLayout.LayoutParams(ui.px(96), ui.px(56)));
         Runnable updateClock = new Runnable() {
             public void run() {
                 if (disposed) return;
@@ -244,15 +245,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             }
         };
         updateClock.run();
-        page.addView(header);
+        page.addView(header,new LinearLayout.LayoutParams(-1,ui.px(64)));
         status = ui.text("", 16, BlUi.SUB);
         status.setMaxLines(2);
         status.setPadding(0, ui.px(6), 0, ui.px(6));
         page.addView(status);
         body = ui.vertical();
+        body.setPadding(0,ui.px(16),ui.px(4),0);
         page.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        configUrl = config.optString("url");
+        configurations=new BoxConfigurations(context);
+        configUrl = configurations.resolve(config.optString("url"));
         show(configScreen(), false);
         if (!configUrl.isEmpty()) openRepository(configUrl, true);
         container.addView(root, new FrameLayout.LayoutParams(-1, -1));
@@ -279,7 +282,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private LinearLayout sidebar() {
         LinearLayout bar = ui.vertical();
         bar.setPadding(ui.px(12), ui.px(30), ui.px(12), ui.px(24));
-        sidebarGlass=new BoxGlass(bar,container,ui.px(28),Math.max(1,ui.px(1)),ui.sidebarSkin(),ui.capsuleSkin());
+        sidebarGlass=new BoxGlass(bar,container,ui.px(28),Math.max(1,ui.px(1)));
         ui.material(sidebarGlass);
         bar.setBackgroundDrawable(sidebarGlass);
         for (Tab tab : new Tab[]{Tab.SEARCH, Tab.HOME, Tab.SITES, Tab.CATEGORIES, Tab.CONFIG}) {
@@ -338,11 +341,22 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Screen configScreen() {
         return new Screen(Tab.CONFIG, "配置站点", true, () -> {
-            EditText input = form("TVBox 配置地址", configUrl, "加载配置", url -> {
-                if (!url.isEmpty()) openRepository(url, true);
+            EditText input = form("添加 TVBox 配置地址", configUrl, "添加并加载", url -> {
+                if(url.isEmpty())return;
+                try{String saved=configurations.remember(url);show(configScreen(),false);openRepository(saved,true);}
+                catch(IOException invalid){message(invalid.getMessage());}
             });
             input.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                     | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+            TextView label=ui.title("已保存的配置");label.setPadding(0,ui.px(18),0,ui.px(10));body.addView(label);
+            android.widget.ScrollView scroll=new android.widget.ScrollView(context);LinearLayout saved=ui.vertical();scroll.addView(saved);body.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+            for(String address:configurations.addresses()){
+                LinearLayout row=ui.horizontal();row.setPadding(ui.px(20),ui.px(14),ui.px(12),ui.px(14));row.setBackgroundDrawable(ui.glass(0x30394d60,18));
+                TextView value=ui.text(address,21,BoxUi.TEXT);value.setMaxLines(2);value.setPadding(0,0,ui.px(16),0);value.setEllipsize(TextUtils.TruncateAt.MIDDLE);row.addView(value,new LinearLayout.LayoutParams(0,-2,1));
+                boolean current=address.equals(configurations.active());Button use=action(row,current?"使用中":"切换",()->{if(pending==null)openRepository(address,true);});use.setEnabled(!current);use.setContentDescription("切换配置 "+address);
+                Button remove=action(row,"删除",()->{configurations.remove(address);if(address.equals(configUrl))configUrl="";show(configScreen(),false);});remove.setContentDescription("删除配置 "+address);
+                LinearLayout.LayoutParams bounds=new LinearLayout.LayoutParams(-1,-2);bounds.bottomMargin=ui.px(10);saved.addView(row,bounds);
+            }
         });
     }
 
@@ -355,6 +369,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 if (topLevel) {
                     history.clear();
                     configUrl = url;
+                    configurations.activate(url);
                 }
                 homes.clear();
                 currentSite = null;
@@ -364,7 +379,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                         choices.add(new Choice(repo.name, () -> openRepository(repo.url, false)));
                     }
                     for (BoxSource.Site site : sites) choices.add(new Choice(site.name, () -> openSite(site)));
-                    choices(body, choices, 3, 70);
+                    choices(body, choices, 4, 64);
                     if (choices.isEmpty()) message("配置里没有可用站点");
                 });
                 show(next, true);
@@ -430,7 +445,6 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Screen homeScreen(SiteHome model) {
         return new Screen(Tab.HOME, model.site.name, true, () -> {
-            Button refresh=action(actions,"↻",()->{homes.remove(siteKey(model.site));openSite(model.site);});refresh.setContentDescription("刷新站点");
             message(model.notice);
             if (!homeVideos(model)) {
                 if ("push_agent".equals(model.site.key) || model.site.api.contains("PushGuard")) {
@@ -553,9 +567,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             Button details = action(buttons, actionLabel, open);
             details.setBackgroundDrawable(ui.primaryFocus(details)); details.setTextColor(ui.controlText());
             details.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
-            details.setMinHeight(ui.px(60));details.setMinimumWidth(ui.px(220));
+            details.setMinHeight(ui.px(60));
             Button secondary=video.optString("vod_id").isEmpty()&&currentSite!=null?action(buttons,"浏览分类",()->switchTab(Tab.CATEGORIES)):action(buttons,"搜索同名",()->chooseSearchSite(videoName(video)));
-            secondary.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));secondary.setMinHeight(ui.px(60));secondary.setMinimumWidth(ui.px(190));
+            secondary.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));secondary.setMinHeight(ui.px(60));
             info.addView(buttons);
             hero.addView(info, new FrameLayout.LayoutParams(-1, -1));
             primary = details;
@@ -612,8 +626,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 if (all[0] || model == null) chooseSearchSite(text);
                 else listing(model.site, "搜索 · " + text, "", text, 1, true);
             });
-            GridView keyboard = ui.keyboard(input);
-            addGrid(body, keyboard, 10);
+            BoxNineKeyboard keyboard=new BoxNineKeyboard(ui,input);body.addView(keyboard,new LinearLayout.LayoutParams(Math.min(ui.px(620),context.getResources().getDisplayMetrics().widthPixels-ui.px(230)),-2));
+            primary=keyboard.entry();
         });
     }
 
@@ -1063,7 +1077,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         options.setNumColumns(columns); options.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
         options.setHorizontalSpacing(ui.px(10)); options.setVerticalSpacing(ui.px(10));
         options.setPadding(ui.px(2), ui.px(8), ui.px(2), ui.px(12)); options.setClipToPadding(false);
-        options.setSelector(ui.selector()); options.setDrawSelectorOnTop(true);
+        options.setSelector(ui.capsuleSelector()); options.setDrawSelectorOnTop(true);
         options.setAdapter(new BaseAdapter() {
             public int getCount() { return items.size(); }
             public Choice getItem(int position) { return items.get(position); }
@@ -1073,7 +1087,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 if (reuse == null) {
                     item.setPadding(ui.px(12), ui.px(9), ui.px(12), ui.px(9));
                     item.setMinimumHeight(ui.px(columns == 3 ? 68 : 60));
-                    item.setBackgroundDrawable(ui.episodeBackground());
+                    item.setBackgroundDrawable(ui.rowGlass(item));
                     TextView number = ui.text("", 15, BoxUi.SUB);
                     number.setTextColor(ui.episodeText());number.setDuplicateParentStateEnabled(true);
                     number.setVisibility(columns==6?View.GONE:View.VISIBLE);
@@ -1151,26 +1165,22 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private void choices(LinearLayout parent, List<Choice> items, int columns, int height) {
         if (items.isEmpty()) return;
         GridView options = ui.grid(columns);
+        options.setHorizontalSpacing(ui.px(12));options.setVerticalSpacing(ui.px(10));
+        options.setSelector(ui.capsuleSelector());
         options.setAdapter(new BaseAdapter() {
             @Override public int getCount() { return items.size(); }
             @Override public Choice getItem(int position) { return items.get(position); }
             @Override public long getItemId(int position) { return position; }
             @Override public View getView(int position, View reuse, ViewGroup container) {
-                TextView item = reuse instanceof TextView ? (TextView) reuse : ui.text("", 18, BlUi.TEXT);
+                TextView item = reuse instanceof TextView ? (TextView) reuse : ui.text("", 22, BlUi.TEXT);
                 if (reuse == null) {
                     item.setGravity(Gravity.CENTER);
-                    item.setPadding(ui.px(16), ui.px(12), ui.px(16), ui.px(12));
-                    item.setMinHeight(ui.px(height >= 58 ? 94 : height));
-                    if (height >= 58) {
-                        Drawable icon = context.getResources().getDrawable(android.R.drawable.ic_menu_slideshow).mutate();
-                        icon.setColorFilter(0xff8fdbff, PorterDuff.Mode.SRC_IN);
-                        icon.setBounds(0, 0, ui.px(30), ui.px(30));
-                        item.setCompoundDrawables(null, icon, null, null);
-                        item.setCompoundDrawablePadding(ui.px(10));
-                    }
+                    item.setPadding(ui.px(12), ui.px(8), ui.px(12), ui.px(8));
+                    item.setMinHeight(ui.px(height));
+                    item.setCompoundDrawables(null,null,null,null);
                     item.setMaxLines(2);
                     item.setEllipsize(TextUtils.TruncateAt.END);
-                    item.setBackgroundDrawable(ui.glass(0x55415967, 16));
+                    item.setBackgroundDrawable(ui.rowGlass(item));
                 }
                 item.setText(getItem(position).title);
                 return item;
@@ -1198,17 +1208,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Button action(LinearLayout parent, String label, Runnable run) {
         Button button = ui.button(label);
-        int icon=label.equals("返回")?5:label.equals("↻")?6:label.startsWith("▶")?7:label.equals("搜索同名")?3:label.equals("筛选")?8:-1;
+        int icon=label.equals("返回")?5:label.startsWith("▶")?7:label.equals("搜索同名")?3:label.equals("筛选")?8:-1;
         if(icon>=0){
-            button.setText(label.startsWith("▶")?label.substring(1).trim():label.equals("↻")?"":label);
+            button.setText(label.startsWith("▶")?label.substring(1).trim():label);
             Drawable glyph=ui.actionIcon(icon);glyph.setBounds(0,0,ui.px(24),ui.px(24));
-            button.setCompoundDrawables(glyph,null,null,null);button.setCompoundDrawablePadding(ui.px(label.equals("↻")?0:8));
-            button.setContentDescription(label.equals("↻")?"刷新站点":button.getText());
+            button.setCompoundDrawables(glyph,null,null,null);button.setCompoundDrawablePadding(ui.px(8));
+            button.setContentDescription(button.getText());
         }
         button.setAllCaps(false);
         button.setOnClickListener(view -> run.run());
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-2, -2);
-        size.rightMargin = ui.px(8);
+        size.rightMargin = ui.px(12);
         parent.addView(button, size);
         return button;
     }

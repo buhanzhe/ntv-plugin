@@ -21,7 +21,7 @@ final class BoxArt {
     private final BoxHttp http;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 2, 15, TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.DiscardOldestPolicy());
+            new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
     private final ThreadPoolExecutor frosting = new ThreadPoolExecutor(1, 1, 15, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(1), new ThreadPoolExecutor.DiscardOldestPolicy());
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(
@@ -33,9 +33,14 @@ final class BoxArt {
     private volatile boolean closed;
     private final java.util.WeakHashMap<ImageView,Integer> requests=new java.util.WeakHashMap<>();
     private int sequence;
+    private final java.util.Map<String,java.util.List<Target>> inFlight=new java.util.HashMap<>();
+    private static final class Target {
+        final java.lang.ref.WeakReference<ImageView> view;final int request;final String url;final Ready ready;
+        Target(ImageView view,int request,String url,Ready ready){this.view=new java.lang.ref.WeakReference<>(view);this.request=request;this.url=url;this.ready=ready;}
+    }
 
     BoxArt(BoxHttp http) {
-        this.http = http;
+        this.http = http.forArtwork();
         workers.allowCoreThreadTimeOut(true);
         frosting.allowCoreThreadTimeOut(true);
     }
@@ -43,6 +48,9 @@ final class BoxArt {
     void load(ImageView view, String url) { load(view,url,640); }
     void load(ImageView view, String url, int edge) { load(view,url,edge,null); }
     void load(ImageView view, String url, int edge, Ready ready) {
+        load(view,url,edge,ready,0);
+    }
+    private void load(ImageView view,String url,int edge,Ready ready,int retry) {
         String cacheKey=edge+"\n"+url;
         if (view.getBackground() == null && !(view instanceof BoxBackdrop)) {
             view.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
@@ -56,20 +64,29 @@ final class BoxArt {
         view.setImageBitmap(preview);
         if(preview!=null&&ready!=null)ready.image(preview);
         if (url.isEmpty() || existing != null || closed) return;
-        workers.execute(() -> {
+        Target target=new Target(view,request,url,ready);
+        java.util.List<Target> waiting=inFlight.get(cacheKey);
+        if(waiting!=null){waiting.add(target);return;}
+        waiting=new java.util.ArrayList<>();waiting.add(target);inFlight.put(cacheKey,waiting);
+        try{workers.execute(() -> {
             if (closed) return;
             Bitmap bitmap = cache.get(cacheKey);
             if (bitmap == null) bitmap = fetch(url, edge);
-            if (bitmap == null || closed) return;
-            cache.put(cacheKey, bitmap);
+            if(closed)return;
+            if(bitmap!=null)cache.put(cacheKey, bitmap);
             Bitmap result = bitmap;
             main.post(() -> {
-                if (!closed && url.equals(view.getTag()) && Integer.valueOf(request).equals(requests.get(view))) {
-                    view.setImageBitmap(result);
-                    if(ready!=null)ready.image(result);
+                java.util.List<Target> targets=inFlight.remove(cacheKey);if(closed||targets==null||result==null)return;
+                for(Target item:targets){ImageView image=item.view.get();
+                    if(image!=null&&item.url.equals(image.getTag())&&Integer.valueOf(item.request).equals(requests.get(image))){
+                        image.setImageBitmap(result);if(item.ready!=null)item.ready.image(result);
+                    }
                 }
             });
-        });
+        });}catch(java.util.concurrent.RejectedExecutionException full){
+            java.util.List<Target> targets=inFlight.remove(cacheKey);
+            if(retry<3&&targets!=null)main.postDelayed(()->{for(Target item:targets){ImageView image=item.view.get();if(!closed&&image!=null&&item.url.equals(image.getTag())&&Integer.valueOf(item.request).equals(requests.get(image)))load(image,item.url,edge,item.ready,retry+1);}},500L*(retry+1));
+        }
     }
 
     Bitmap cached(String url) { return cache.get("640\n"+url); }
@@ -112,19 +129,10 @@ final class BoxArt {
         try {
             int offset = headerOffset(url);
             String address = offset < 0 ? url : url.substring(0, offset);
-            JSONObject headers = new JSONObject();
-            if (offset >= 0) {
-                String suffix = android.net.Uri.decode(url.substring(offset + 1));
-                if (suffix.startsWith("{")) headers = new JSONObject(suffix);
-                else for (String field : url.substring(offset + 1).split("&")) {
-                    int equal = field.indexOf('=');
-                    if (equal <= 0) continue;
-                    String name = java.net.URLDecoder.decode(field.substring(0, equal), "UTF-8");
-                    String value = java.net.URLDecoder.decode(field.substring(equal + 1), "UTF-8");
-                    if (name.matches("[A-Za-z0-9!#$%&'*+.^_`|~-]+") && value.indexOf('\r') < 0 && value.indexOf('\n') < 0)
-                        headers.put(name, value);
-                }
-            }
+            JSONObject headers = headers(url);
+            if(!hasHeader(headers,"User-Agent"))headers.put("User-Agent","Mozilla/5.0");
+            if(!hasHeader(headers,"Accept"))headers.put("Accept","image/jpeg,image/png,image/webp,image/gif,*/*;q=0.5");
+            if(BoxHttp.url(address).host().endsWith(".doubanio.com")&&!hasHeader(headers,"Referer"))headers.put("Referer","https://movie.douban.com/");
             try (Response response = http.openMedia(BoxHttp.url(address), headers, Collections.emptyMap())) {
                 if (!response.isSuccessful()) return null;
                 byte[] data = BoxHttp.read(response.body(), DOWNLOAD_LIMIT);
@@ -154,18 +162,21 @@ final class BoxArt {
     }
 
     static int headerOffset(String url) {
-        int pipe = url.indexOf('|');
-        if (pipe >= 0) return pipe;
-        java.util.regex.Matcher marker = java.util.regex.Pattern.compile("(?i)@(?=(?:Referer|User-Agent|Cookie|Origin|Authorization|Accept)=|\\{|%7b)").matcher(url);
-        return marker.find() ? marker.start() : -1;
+        return BoxImageHeaders.offset(url);
+    }
+    private static boolean hasHeader(JSONObject headers,String name){java.util.Iterator<String> keys=headers.keys();while(keys.hasNext())if(keys.next().equalsIgnoreCase(name))return true;return false;}
+    static JSONObject headers(String url)throws Exception{
+        return BoxImageHeaders.parse(url);
     }
 
     void close() {
         closed = true;
         workers.shutdownNow();
+        http.cancelRequests();
         frosting.shutdownNow();
         main.removeCallbacksAndMessages(null);
         cache.evictAll();
         requests.clear();
+        inFlight.clear();
     }
 }

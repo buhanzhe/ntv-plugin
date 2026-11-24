@@ -25,21 +25,16 @@ import xiao.bu.channel.bl.BlUi;
 final class BoxUi extends BlUi {
     static final int TEXT = 0xfff4f8ff, SUB = 0xffb8cbe1, ACCENT = 0xffe7f6ff;
     private final BoxTypography typography;
-    private final BoxGlassSkin sidebarSkin,capsuleSkin;
-    BoxGlassSkin sidebarSkin(){return sidebarSkin;}
-    BoxGlassSkin capsuleSkin(){return capsuleSkin;}
     private BoxGlass material;
     void material(BoxGlass value){material=value;}
     Drawable navigationFocus(Button button){return material==null?navigationFocus():material.control(button,px(22),3);}
     Drawable primaryFocus(Button button){return material==null?primaryFocus():material.control(button,px(28),2);}
     android.content.res.ColorStateList controlText(){
-        return new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_pressed},new int[]{}},new int[]{0xff17222b,0xff17222b,TEXT});
+        return android.content.res.ColorStateList.valueOf(TEXT);
     }
     BoxUi(Context context,ClassLoader assets,okhttp3.OkHttpClient transport) {
         super(context);
         typography=new BoxTypography(context,transport);
-        int edge=Math.max(900,Math.min(1800,Math.max(context.getResources().getDisplayMetrics().widthPixels,context.getResources().getDisplayMetrics().heightPixels)));
-        sidebarSkin=BoxGlassSkin.load(assets,"sidebar",edge);capsuleSkin=BoxGlassSkin.load(assets,"capsule",edge);
     }
     TextView displayTitle(String value) {
         TextView t=text(value,80,TEXT);typography.title(t);
@@ -60,6 +55,22 @@ final class BoxUi extends BlUi {
         d.setCornerRadius(px(radius)); d.setStroke(Math.max(1, px(1)), 0x557f9aaa);
         return d;
     }
+
+    private GradientDrawable capsule(int[] colors) {
+        return new GradientDrawable(GradientDrawable.Orientation.TL_BR,colors){
+            @Override protected void onBoundsChange(Rect bounds){
+                super.onBoundsChange(bounds);setCornerRadius(Math.min(bounds.width(),bounds.height())/2f);
+            }
+        };
+    }
+    GradientDrawable capsuleGlass(int color){
+        GradientDrawable d=capsule(new int[]{color,(color&0xff000000)|0x14232e});
+        d.setStroke(Math.max(1,px(1)),0x557f9aaa);return d;
+    }
+    GradientDrawable capsuleSelector(){
+        GradientDrawable d=capsule(new int[]{0,0});d.setStroke(Math.max(2,px(2)),ACCENT);return d;
+    }
+    Drawable rowGlass(android.view.View row){return material==null?capsuleGlass(0x4035414b):material.control(row,0,4);}
 
     @Override public StateListDrawable focus(int normal) {
         StateListDrawable states = new StateListDrawable();
@@ -82,10 +93,6 @@ final class BoxUi extends BlUi {
         states.addState(new int[]{}, fill(0x00000000, 22)); return states;
     }
 
-    GradientDrawable silver(int radius) {
-        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xfff2f7fc,0xffadbdcb,0xffe1eaf2});
-        d.setCornerRadius(px(radius));d.setStroke(Math.max(1,px(1)),0xffedf7ff);return d;
-    }
     StateListDrawable primaryFocus() {
         StateListDrawable states=new StateListDrawable();
         GradientDrawable focused=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xe6b7c4cf,0xc6788897,0xdd425665});
@@ -110,18 +117,12 @@ final class BoxUi extends BlUi {
         b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(28));
         b.setPadding(px(18), 0, px(18), px(6)); b.setMinWidth(0); b.setMinimumWidth(0);
         StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_focused}, glass(0x66566e83, 16));
+        states.addState(new int[]{android.R.attr.state_focused}, capsuleGlass(0x66566e83));
         states.addState(new int[]{}, fill(0x00000000, 0)); b.setBackgroundDrawable(states); return b;
     }
 
-    StateListDrawable episodeBackground() {
-        StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_selected}, silver(22));
-        states.addState(new int[]{}, glass(0x77415462, 22)); return states;
-    }
     android.content.res.ColorStateList episodeText() {
-        return new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_selected},new int[]{}},
-                new int[]{0xff0d1b26,TEXT});
+        return android.content.res.ColorStateList.valueOf(TEXT);
     }
 
     GradientDrawable selector() {
@@ -164,7 +165,7 @@ final class BoxUi extends BlUi {
             private final RectF rect=new RectF();
             @Override public void draw(Canvas canvas){int saved=canvas.save();Rect b=getBounds();canvas.translate(b.left,b.top);canvas.scale(b.width()/24f,b.height()/24f);
                 boolean focus=false;for(int state:getState())if(state==android.R.attr.state_focused||state==android.R.attr.state_pressed)focus=true;
-                paint.setColor(darkFocus&&focus?0xff17222b:TEXT);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.65f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);path.reset();
+                paint.setColor(TEXT);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.65f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);path.reset();
                 if(kind==3){canvas.drawCircle(10.3f,10.3f,7.2f,paint);canvas.drawLine(15.6f,15.6f,21.6f,21.6f,paint);}
                 else if(kind==1){
                     canvas.drawCircle(12,12,9.6f,paint);
@@ -175,7 +176,6 @@ final class BoxUi extends BlUi {
                 else if(kind==0){path.moveTo(3,7);path.lineTo(12,2.5f);path.lineTo(21,7);path.lineTo(12,11.5f);path.close();canvas.drawPath(path,paint);for(int y=12;y<=17;y+=5){path.reset();path.moveTo(3,y);path.lineTo(12,y+4.5f);path.lineTo(21,y);canvas.drawPath(path,paint);}}
                 else if(kind==2){for(int x=3;x<=14;x+=11)for(int y=3;y<=14;y+=11){rect.set(x,y,x+7,y+7);canvas.drawRoundRect(rect,2.2f,2.2f,paint);}}
                 else if(kind==5){path.moveTo(14.5f,4.5f);path.lineTo(7,12);path.lineTo(14.5f,19.5f);canvas.drawPath(path,paint);}
-                else if(kind==6){rect.set(4,4,20,20);canvas.drawArc(rect,-45,285,false,paint);path.moveTo(14,4);path.lineTo(19.5f,4);path.lineTo(19.5f,9.5f);canvas.drawPath(path,paint);}
                 else if(kind==7){path.moveTo(7,4);path.lineTo(20,12);path.lineTo(7,20);path.close();paint.setStyle(Paint.Style.FILL);canvas.drawPath(path,paint);}
                 else if(kind==8){path.moveTo(3,4);path.lineTo(21,4);path.lineTo(14,12);path.lineTo(14,19);path.lineTo(10,21);path.lineTo(10,12);path.close();canvas.drawPath(path,paint);}
                 else{for(int i=0;i<32;i++){double a=i*Math.PI/16;float radius=i%4==0||i%4==3?10:8.25f;float x=12+(float)Math.cos(a)*radius,y=12+(float)Math.sin(a)*radius;if(i==0)path.moveTo(x,y);else path.lineTo(x,y);}path.close();canvas.drawPath(path,paint);canvas.drawCircle(12,12,3.5f,paint);}

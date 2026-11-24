@@ -21,6 +21,8 @@ final class BoxHttp {
     private final OkHttpClient client;
 
     BoxHttp(OkHttpClient client) { this.client = client; }
+    BoxHttp forArtwork(){return new BoxHttp(client.newBuilder().dispatcher(new okhttp3.Dispatcher())
+            .connectTimeout(4,TimeUnit.SECONDS).readTimeout(7,TimeUnit.SECONDS).callTimeout(10,TimeUnit.SECONDS).build());}
     BoxHttp forSearch() {
         return new BoxHttp(client.newBuilder().dispatcher(new okhttp3.Dispatcher())
                 .connectTimeout(3, TimeUnit.SECONDS).readTimeout(6, TimeUnit.SECONDS)
