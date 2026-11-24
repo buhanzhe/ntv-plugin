@@ -12,6 +12,8 @@ TVBox v7 增加多站搜索、站点与爬虫包缓存，并修复易听歌手�
 
 ## 发布
 
+清理附件、清单或发布范围时沿用现有 Release 标签。只有明确安排发布新版本时才调整版本号。
+
 `all.m3u` 汇总文件浏览、TVBox、BL 三个频道 JAR。每项包含实际 SHA-256，并固定到对应的仓库提交。Python、Ku9、TVBus 通过插件管理安装。
 
 更新仓库订阅时，先提交 JAR 产物，再运行 `python scripts/prepare_release.py --repository-ref 完整产物提交SHA --output all.m3u` 并提交生成的文件。发布打包也会生成合并的 `all.m3u`，并将其纳入 `SHA256SUMS`。
