@@ -194,7 +194,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         http = new BoxHttp((OkHttpClient) host.httpClient());
         source = new BoxSource(context, host, assets, http);
         art = new BoxArt(http);
-        container = new FrameLayout(context);container.setBackgroundColor(0xff000000);
+        container = new FrameLayout(context) {
+            @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                boolean hadFocus=hasFocus();
+                if(super.dispatchKeyEvent(event))return true;
+                if(!hadFocus){
+                    if(dashPlayer!=null&&dashPlayer.isShown())return dashPlayer.dispatchKeyEvent(event);
+                    if(root!=null&&root.isShown())return root.dispatchKeyEvent(event);
+                }
+                return false;
+            }
+        };container.setBackgroundColor(0xff000000);
         container.setBackgroundDrawable(ui.backdrop());
         ambientArt=new ImageView(context);ambientArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
         container.addView(ambientArt,new FrameLayout.LayoutParams(-1,-1));
@@ -205,9 +215,15 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         backdropShade.setVisibility(View.GONE);container.addView(backdropShade,new FrameLayout.LayoutParams(-1,-1));
         root = new LinearLayout(context) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                int direction = focusDirection(event.getKeyCode());
+                if(event.getAction()==KeyEvent.ACTION_DOWN&&findFocus()==null
+                        &&(direction!=0||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER
+                            ||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)){
+                    focusContent();
+                    if(direction!=0&&findFocus()!=null)return true;
+                }
                 if (super.dispatchKeyEvent(event)) return true;
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                int direction = focusDirection(event.getKeyCode());
                 if (direction == 0) return false;
                 View next = FocusFinder.getInstance().findNextFocus(this, findFocus(), direction);
                 return next != null && next.requestFocus(direction);
@@ -1288,6 +1304,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (!history.isEmpty() && !(next.tab==Tab.HOME&&next.landing)) action(actions, "返回", this::onBack);
         next.render.run();
         focusContent();
+        root.post(()->{if(!disposed&&screen==next&&root.isShown()&&dashPlayer==null)focusContent();});
     }
 
     private void ambientBackdrop() {
@@ -1319,9 +1336,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void focusContent() {
-        if (primary != null && primary != grid) {
-            primary.requestFocusFromTouch();
-        } else if (grid != null && grid.getCount() > 0) {
+        if (primary != null && primary != grid && primary.isShown() && primary.requestFocusFromTouch()) {
+            return;
+        } else if (grid != null && grid.isShown() && grid.getCount() > 0) {
             grid.requestFocusFromTouch();
             grid.setSelection(Math.min(screen.selection, grid.getCount() - 1));
         } else {
@@ -1410,7 +1427,10 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return true;
     }
 
-    @Override public void setActive(boolean active) { if (dashPlayer != null) dashPlayer.setActive(active); }
+    @Override public void setActive(boolean active) {
+        if (dashPlayer != null) dashPlayer.setActive(active);
+        else if(active)main.post(()->{if(!disposed&&root.isShown()&&root.findFocus()==null)focusContent();});
+    }
     @Override public void update(long positionMs, boolean playing) { }
 
     @Override public void dispose() {
