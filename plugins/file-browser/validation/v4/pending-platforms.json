@@ -17,10 +17,14 @@
       "api": 37,
       "model": "25019PNF3C",
       "probe_target_sdk": 37,
-      "installed": false,
-      "tested": false,
-      "block": "MIUI per-install USB confirmation timed out; direct and non-streaming installation failed; awaiting manual APK installation",
-      "manual_apk": "Download/file-browser-probe-api37-27bf1f6f.apk"
+      "installed": true,
+      "tested": true,
+      "block": "Android17 disconnected from ADB before updated probe installation",
+      "passed": false,
+      "completed": false,
+      "plugin_launched": true,
+      "stage": "v4 JAR loaded; browser opened; real media permission dialog observed; OEM dialog adapter timed out",
+      "next_step": "Reconnect device, update isolated probe, then run storage and SMB validation"
     }
   ]
 }

@@ -8,9 +8,11 @@
 
 ## 追加设备状态
 
-用户追加要求测试 Android 7.1 和 Android 17。ADB 已识别 MI 6 的 Android 7.1.1 / API 25，以及 25019PNF3C 的 Android 17 / API 37。已构建分别面向 targetSdk 25 与 37 的独立探针，但两台安装均返回 `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`，MI 6 同时处于锁屏。用户随后要求先只测 Android 17；允许 USB 安装后，Android 17 的逐次安装倒计时仍自动拒绝，普通文件安装重试也失败。已将独立探针 APK 放入手机下载目录，等待手动安装。**这两台尚未执行插件测试，不能记为通过**。[阻塞记录](validation/v4/pending-platforms.json)。
+用户追加要求测试 Android 7.1 和 Android 17，随后要求先只测 Android 17。7.1.1 / API25 的 MI 6 暂缓。
 
-现代探针声明 READ_MEDIA_VIDEO、使用可选择的 Movies 测试目录，并从公开播放器回调取得解码器信息；准备支持新系统测试，不依赖隐藏平台字段。此项为测试工具准备，不等于 Android 17 兼容验收。
+Android17 / API37（25019PNF3C）的独立探针已由用户手动安装，并实机成功加载最终 v4 JAR、打开浏览界面、触发真实照片/视频权限窗口。自动测试在 OEM 权限弹窗的按钮识别处中断；同时观察到 targetSdk37 宿主的顶部系统边缘遮挡。
+
+已在工作区准备新版 OEM 弹窗适配、边缘留白与 SDK37 局域网授权流程；这些候选修复通过 4.0.4 和 Android9 回归。更新 Android17 探针前，该手机从 ADB 断开，尚未完成本机/目录持久授权/SMB 播放验收。**Android17 当前结果为未完成，不记为通过；已发布 JAR 仍为本页 v4。** [状态记录](validation/v4/pending-platforms.json)。
 
 ## 文件授权与遥控器
 
