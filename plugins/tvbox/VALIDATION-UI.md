@@ -26,3 +26,5 @@ Samsung SM-G3608 / ARM32，原签名 Bro 1.8.4（versionCode 12）：
 Android 7.1.1 MI 6 本次测试组件安装被系统拦截，按用户指示先完成 4.4；未把此前的 7.1 结果记为新界面已通过。第三方站点逐站播放与授权结果见既有 [VALIDATION.md](VALIDATION.md) 和 [VALIDATION-SEARCH.md](VALIDATION-SEARCH.md)。本次布局测试使用自有媒体样本，不代表重新验证全部第三方线路。
 
 左右单击 5 秒、长按预览需要使用包含 PlayerUi.remoteKey 接口的新宿主构建；旧宿主上的插件 DASH 路径保留松开时跳转 5 秒的兼容处理。
+
+后续版本名调整：按用户要求，Bro 版本名改为 1.8.3，versionCode 保持 12。保留上述原始 1.8.4 测试记录；新包已校验 APK 版本并在 Android 4.4.4 设备覆盖安装。
