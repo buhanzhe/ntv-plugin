@@ -25,6 +25,9 @@ import xiao.bu.channel.bl.BlUi;
 final class BoxUi extends BlUi {
     static final int TEXT = 0xfff4f8ff, SUB = 0xffb8cbe1, ACCENT = 0xffe7f6ff;
     private final BoxTypography typography;
+    private final BoxGlassSkin sidebarSkin,capsuleSkin;
+    BoxGlassSkin sidebarSkin(){return sidebarSkin;}
+    BoxGlassSkin capsuleSkin(){return capsuleSkin;}
     private BoxGlass material;
     void material(BoxGlass value){material=value;}
     Drawable navigationFocus(Button button){return material==null?navigationFocus():material.control(button,px(22),3);}
@@ -32,9 +35,11 @@ final class BoxUi extends BlUi {
     android.content.res.ColorStateList controlText(){
         return new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_pressed},new int[]{}},new int[]{0xff17222b,0xff17222b,TEXT});
     }
-    BoxUi(Context context,okhttp3.OkHttpClient transport) {
+    BoxUi(Context context,ClassLoader assets,okhttp3.OkHttpClient transport) {
         super(context);
         typography=new BoxTypography(context,transport);
+        int edge=Math.max(900,Math.min(1800,Math.max(context.getResources().getDisplayMetrics().widthPixels,context.getResources().getDisplayMetrics().heightPixels)));
+        sidebarSkin=BoxGlassSkin.load(assets,"sidebar",edge);capsuleSkin=BoxGlassSkin.load(assets,"capsule",edge);
     }
     TextView displayTitle(String value) {
         TextView t=text(value,80,TEXT);typography.title(t);

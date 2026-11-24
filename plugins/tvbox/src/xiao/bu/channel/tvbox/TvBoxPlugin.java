@@ -186,7 +186,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (!(base instanceof VodHost)) throw new IOException("请更新 nTv 以运行 TVBox");
         host = (VodHost) base;
         this.context = context;
-        ui = new BoxUi(context,(OkHttpClient)host.httpClient());
+        ui = new BoxUi(context,assets,(OkHttpClient)host.httpClient());
         http = new BoxHttp((OkHttpClient) host.httpClient());
         source = new BoxSource(context, host, assets, http);
         art = new BoxArt(http);
@@ -279,7 +279,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private LinearLayout sidebar() {
         LinearLayout bar = ui.vertical();
         bar.setPadding(ui.px(12), ui.px(30), ui.px(12), ui.px(24));
-        sidebarGlass=new BoxGlass(bar,container,ui.px(28),Math.max(1,ui.px(1)));
+        sidebarGlass=new BoxGlass(bar,container,ui.px(28),Math.max(1,ui.px(1)),ui.sidebarSkin(),ui.capsuleSkin());
         ui.material(sidebarGlass);
         bar.setBackgroundDrawable(sidebarGlass);
         for (Tab tab : new Tab[]{Tab.SEARCH, Tab.HOME, Tab.SITES, Tab.CATEGORIES, Tab.CONFIG}) {

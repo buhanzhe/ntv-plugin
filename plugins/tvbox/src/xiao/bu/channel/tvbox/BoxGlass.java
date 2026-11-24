@@ -8,6 +8,7 @@ import android.view.View;
 final class BoxGlass extends Drawable {
     private final View panel, scene;
     private final float radius, stroke;
+    private final BoxGlassSkin texture,capsule;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
     private final Path outline = new Path();
     private final RectF area = new RectF(), destination = new RectF();
@@ -20,15 +21,16 @@ final class BoxGlass extends Drawable {
     private final java.util.ArrayList<java.lang.ref.WeakReference<BoxGlass>> controls=new java.util.ArrayList<>();
     private Shader tint, rim, gleam;
 
-    BoxGlass(View panel, View scene, float radius, float stroke) {
+    BoxGlass(View panel, View scene, float radius, float stroke,BoxGlassSkin texture,BoxGlassSkin capsule) {
         this.panel=panel; this.scene=scene; this.radius=radius; this.stroke=stroke;
+        this.texture=texture;this.capsule=capsule;
         ColorMatrix matrix=new ColorMatrix();matrix.setSaturation(.16f);
         neutral=new ColorMatrixColorFilter(matrix);
         matrix.setSaturation(.42f);matrix.postConcat(new ColorMatrix(new float[]{.94f,0,0,0,0,0,.99f,0,0,2,0,0,1.04f,0,5,0,0,0,1,0}));
         cool=new ColorMatrixColorFilter(matrix);
     }
     BoxGlass control(View view,float radius,int style) {
-        BoxGlass control=new BoxGlass(view,scene,radius,stroke);control.source=this;control.style=style;
+        BoxGlass control=new BoxGlass(view,scene,radius,stroke,capsule,capsule);control.source=this;control.style=style;
         controls.add(new java.lang.ref.WeakReference<>(control));return control;
     }
     void image(Bitmap value) {
@@ -45,13 +47,13 @@ final class BoxGlass extends Drawable {
     private void shaders() {
         boolean silver=active&&style>0&&style!=3;
         int[] colors=silver?new int[]{0xfff9fbfd,0xffd9e2ea,0xffedf3f8}:
-                style==0?new int[]{0x663b4b5d,0x55202e3e,0x66304050}:
-                style==3?new int[]{0x81a7b6c5,0x56677e95,0x687a8ea2}:
-                style==2||selected?new int[]{0x80d3e0eb,0x66526475,0x78485c6e}:
-                new int[]{0x60a5b8c7,0x3d465968,0x50465866};
+                style==0?new int[]{0x2b50677d,0x21152638,0x35304456}:
+                style==3?new int[]{0x3c8ca7bf,0x2f354c65,0x384f6b83}:
+                style==2||selected?new int[]{0x50a3bbce,0x38445870,0x4b455f77}:
+                new int[]{0x2d8da9bd,0x24324759,0x323e5368};
         tint=new LinearGradient(0,area.top,0,area.bottom,colors,new float[]{0,.56f,1},Shader.TileMode.CLAMP);
         rim=new LinearGradient(0,area.top,area.right,area.bottom,
-                new int[]{active?0xfff7fbff:0xb3e3edf5,0x45677b8d,0x34465b70,active?0xd9eaf3fc:0x708a9eaf},null,Shader.TileMode.CLAMP);
+                new int[]{active?0xccf7fbff:0x68e3edf5,0x25677b8d,0x20465b70,active?0x99eaf3fc:0x408a9eaf},null,Shader.TileMode.CLAMP);
         gleam=new RadialGradient(area.left,area.top,Math.max(1,area.width()*1.8f),
                 new int[]{style==0?0x1fe5f2ff:0x20ffffff,0x00ffffff},null,Shader.TileMode.CLAMP);
     }
@@ -66,7 +68,7 @@ final class BoxGlass extends Drawable {
             float left=(scene.getWidth()-image.getWidth()*scale)/2-(panelPosition[0]-scenePosition[0]);
             float top=(scene.getHeight()-image.getHeight()*scale)/2-(panelPosition[1]-scenePosition[1]);
             destination.set(left,top,left+image.getWidth()*scale,top+image.getHeight()*scale);
-            paint.setColor(0xffffffff);paint.setColorFilter(style==0||style==3?cool:neutral);canvas.drawBitmap(image,null,destination,paint);paint.setColorFilter(null);
+            paint.setColor(0x66ffffff);paint.setColorFilter(style==0||style==3?cool:neutral);canvas.drawBitmap(image,null,destination,paint);paint.setColorFilter(null);paint.setAlpha(255);
         }
         paint.setShader(tint); canvas.drawRect(area,paint);
         paint.setShader(gleam); canvas.drawRect(area,paint);
@@ -77,6 +79,7 @@ final class BoxGlass extends Drawable {
             paint.setColor(0x35ffffff);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(stroke*2);
             canvas.drawRoundRect(area,radius,radius,paint);paint.setStyle(Paint.Style.FILL);
         }
+        if(texture!=null)texture.draw(canvas,area,radius,style==0?185:active?220:selected?190:160);
     }
     @Override public boolean isStateful(){return style!=0;}
     @Override protected boolean onStateChange(int[] state){
