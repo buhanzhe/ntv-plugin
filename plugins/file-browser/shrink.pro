@@ -4,6 +4,7 @@
 # Keep guarded modern Android calls out of methods verified on Android 4.0.4.
 -keep class xiao.bu.channel.files.ModernStorage { *; }
 -keep class xiao.bu.channel.files.SmbCryptoProvider$Md4 { public <init>(); }
+-keep class xiao.bu.channel.files.SmbCryptoProvider$AesCmac { public <init>(); }
 # Dalvik's EnumSet reflects values(); R8 cannot infer this through Android's Enum implementation.
 -keepclassmembers enum * {
     public static **[] values();

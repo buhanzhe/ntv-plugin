@@ -1,0 +1,48 @@
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+SERVER samba311-signed API 28
+PASS wrong password keeps editable connection form
+PASS directory loads: smb://127.0.0.1:39703/媒体 videos/ / 1 项 · 确定打开，返回上一级
+PASS correct credentials recover after rejected password
+PASS directory loads: smb://127.0.0.1:39703/媒体 videos/ / 1 项 · 确定打开，返回上一级
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://127.0.0.1:39703/媒体 videos/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://127.0.0.1:39703/媒体 videos/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS smb reuses web-TV playback controls
+PASS smb decoded dimensions 640x360
+PASS smb clock advances 0 -> 2049
+CAPTURE smb
+PASS smb remote pause
+PASS smb remote resume
+PASS smb remote seek +10s
+PASS smb background pause
+PASS smb foreground resume
+PASS SMB HTTP byte range supported
+PASS SMB seek returns exact fixture bytes
+PASS remote BACK releases player and proxy
+PASS proxy socket closed
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://127.0.0.1:39703/媒体 videos/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS password never persisted
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+SERVER samba311-signed API 28
+PASS wrong password keeps editable connection form
+PASS directory loads: smb://127.0.0.1:39703/媒体 videos/ / 1 项 · 确定打开，返回上一级
+PASS correct credentials recover after rejected password
+PASS directory loads: smb://127.0.0.1:39703/媒体 videos/ / 1 项 · 确定打开，返回上一级
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://127.0.0.1:39703/媒体 videos/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://127.0.0.1:39703/媒体 videos/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS smb reuses web-TV playback controls
+PASS smb decoded dimensions 640x360
+PASS smb clock advances 0 -> 2049
+CAPTURE smb
+PASS smb remote pause
+PASS smb remote resume
+PASS smb remote seek +10s
+PASS smb background pause
+PASS smb foreground resume
+PASS SMB HTTP byte range supported
+PASS SMB seek returns exact fixture bytes
+PASS remote BACK releases player and proxy
+PASS proxy socket closed
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://127.0.0.1:39703/媒体 videos/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS password never persisted
+SMB_RESULT=PASS
+

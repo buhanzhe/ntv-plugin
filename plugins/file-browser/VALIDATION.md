@@ -1,3 +1,58 @@
+# v4 Android 9 授权、遥控器与 SMB 兼容性
+
+日期：2026-11-24。独立探针通过 DexClassLoader 加载最终发布 JAR，不覆盖正式 nTv。
+
+- 版本：4，minSdk 14，JAR 378,525 字节。
+- SHA-256：`27bf1f6f81c194faf33b2193b70b18fb0e81a3223ddcc204c99be3a7123b4098`。
+- Android 9 / API 28 用户模拟器；另在 GT-N7005 Android 4.0.4 / API 15 回归。
+
+## 追加设备状态
+
+用户追加要求测试 Android 7.1 和 Android 17。ADB 已识别 MI 6 的 Android 7.1.1 / API 25，以及 25019PNF3C 的 Android 17 / API 37。已构建分别面向 targetSdk 25 与 37 的独立探针，但两台安装均返回 `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`，MI 6 同时处于锁屏。用户随后要求先只测 Android 17；允许 USB 安装后，Android 17 的逐次安装倒计时仍自动拒绝，普通文件安装重试也失败。已将独立探针 APK 放入手机下载目录，等待手动安装。**这两台尚未执行插件测试，不能记为通过**。[阻塞记录](validation/v4/pending-platforms.json)。
+
+现代探针声明 READ_MEDIA_VIDEO、使用可选择的 Movies 测试目录，并从公开播放器回调取得解码器信息；准备支持新系统测试，不依赖隐藏平台字段。此项为测试工具准备，不等于 Android 17 兼容验收。
+
+## 文件授权与遥控器
+
+真实系统“选择目录”通过焦点与 D-pad 确定完成，系统返回持久树 URI，插件保存读取授权并记录目录。结束探针进程后，第二进程在 READ/WRITE AppOps 均受限时仍能打开该目录并播放。测试宿主目录 Intent 与现有宿主一样只添加 READ 标志，不通过伪造 URI 绕过系统选择器。
+
+授权面板隐藏后台焦点；目录返回恢复父目录和原选中卡片，网格左边缘进入侧栏、向右回到网格。播放菜单键聚焦按钮，确定操作当前按钮，左右跳转 10 秒，前后台暂停/恢复，返回释放播放器。系统解码得到 640×360、时钟推进超过 2 秒，Android 9 同时收到原生 `MEDIA_INFO_VIDEO_RENDERING_START` 回调。
+
+模拟器限制：该 ROM 将存储权限列为安装时授权，`pm revoke` 不产生真实运行时拒绝/允许对话框，因此本轮用 AppOps 验证访问受限与设置返回后重检。系统即使报告允许，该探针的原始共享存储路径仍不可读；插件给出明确授权提示，真实系统目录授权路径可正常浏览、播放和跨进程保留。不能据此宣称所有电视 ROM 的运行时对话框已验收。
+
+[授权/重启记录](validation/v4/storage-summary.json)、[授权操作日志](validation/v4/storage-grant.txt)、[跨进程恢复日志](validation/v4/storage-restore.txt)。模拟器的 ADB 截图存在黑帧，目录/播放器黑帧未作为有效截图发布；保留了一张可正常取得的实际授权面板截图。Windows 窗口检查被用户停止，未继续操作。
+
+## SMB 矩阵
+
+临时服务仅绑定回环地址，经 ADB reverse 到模拟器。Samba 使用独立配置与密码库；不更改 Windows SMB 认证或协议策略。所有正例均覆盖中文/空格目录、遥控器打开视频、解码/计时、暂停/继续、跳播、HTTP Range 精确字节校验、释放代理；认证正例先验证错误密码，再用正确密码恢复。
+
+| 服务与配置 | 结果 | 服务端确认 |
+| --- | --- | --- |
+| Impacket 0.12.0，SMB2 访客，服务根共享枚举 | 通过 | 中文共享名和自定义端口 |
+| Impacket 0.12.0，SMB2 账号认证 | 通过 | 错误密码拒绝后可重试 |
+| Samba 4.15.13，SMB 2.0.2-only，访客枚举 | 通过 | SMB2_02 |
+| Samba 4.15.13，SMB 2.1-only，访客直接共享 | 通过 | SMB2_10 |
+| Samba 4.15.13，SMB 3.0-only，强制签名 | 通过 | SMB3_00 / AES-128-CMAC |
+| Samba 4.15.13，SMB 3.1.1-only，强制签名 | 通过 | SMB3_11 / AES-128-CMAC |
+| Samba，SMB 3.0 强制传输加密 | 预期拒绝 | 当前客户端不支持，返回后可继续操作 |
+| Samba，SMB1-only | 预期拒绝 | SMB1 保持禁用，返回后可继续操作 |
+
+修复了自定义端口在共享枚举 RPC 中丢失、访客没有签名密钥时被客户端附加 IPC 签名策略挡住，以及私有 Provider 缺少 SMB3 AES-CMAC 的问题。仅访客会话解除额外的客户端 IPC 签名要求；账号会话及服务器强制签名保留。AES-CMAC 适配器通过 RFC 4493 空消息/单块标准向量、分段更新和复位检查，不注册到系统 Provider 列表。
+
+限速 Impacket 服务播放 11,803,893 字节视频时，在首帧与时钟推进检查点只读取 2,031,616 字节，免密和账号两项均未完成完整传输。另一次免密复测明确记录了原生首帧回调后传输仍小于文件大小。
+
+[完整矩阵与协商记录](validation/v4/smb-matrix.json)、[原生首帧复测](validation/v4/smb-native-frame.json)、[首帧日志](validation/v4/native-first-frame.txt)。
+
+## 旧系统回归与范围
+
+API 14 存根编译、最终 DEX 类型/ABI/哈希检查、HTTP Range/HEAD/非法范围/令牌/关闭句柄与端口检查通过。GT-N7005 的最终同一 JAR 通过本机过滤、实际播放及免密 SMB2 中文文件播放、遥控器、前后台和代理释放；边播检查点读取 2,424,832 / 11,803,893 字节。该次使用明确的测试共享端口，跳过被网络过滤的 TCP445 发现断言；自动扫描代码未在此轮修改。
+
+[4.0.4 日志](validation/v4/android4-result.txt)、[传输统计](validation/v4/android4-transport.json)。测试日志中的局域网地址替换为 FIXTURE_HOST。
+
+实体 USB 插拔、Windows/NAS 厂商设备、Kerberos/域环境及 Android 13+ 未在此轮实测。此前宿主和界面记录保留如下；其中“尚未验证”描述的是各次历史范围。
+
+---
+
 # v3 完整 Bro 宿主验证
 
 日期：2026-11-23。使用原签名 nTv 1.8.3 Bro（ARM32、内置轻量内核），在三星 SM-G3608 / Android 4.4.4 和 MI 6 / Android 7.1.1 上测试。插件由正式宿主的管理接口安装，再经宿主 DexClassLoader 加载；不是独立插件 Activity 替代测试。

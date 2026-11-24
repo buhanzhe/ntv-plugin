@@ -1,0 +1,5 @@
+
+Samba version 4.15.13-Ubuntu
+PID     Username     Group        Machine                                   Protocol Version  Encryption           Signing              
+----------------------------------------------------------------------------------------------------------------------------------------
+692     nobody       nogroup      127.0.0.1 (ipv4:127.0.0.1:37072)          SMB2_10           -                    -                    

@@ -120,7 +120,13 @@ final class VideoControlsOverlay extends FrameLayout {
         time.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
         bottom.addView(time, new LinearLayout.LayoutParams(-1, dp(28)));
         seek = new SeekBar(owner);
-        seek.setMax(1000);
+        seek.setMax(1000);
+        seek.setOnKeyListener((view,key,event)->{
+            if(key!=android.view.KeyEvent.KEYCODE_DPAD_LEFT&&key!=android.view.KeyEvent.KEYCODE_DPAD_RIGHT)return false;
+            if(event.getAction()==android.view.KeyEvent.ACTION_DOWN)step(key==android.view.KeyEvent.KEYCODE_DPAD_LEFT?-10000:10000);
+            return true;
+        });
+
         GradientDrawable track = new GradientDrawable(); track.setColor(0x66ffffff); track.setCornerRadius(dp(2));
         GradientDrawable fill = new GradientDrawable(); fill.setColor(0xffffffff); fill.setCornerRadius(dp(2));
         if (android.os.Build.VERSION.SDK_INT < 16) {
@@ -185,6 +191,7 @@ final class VideoControlsOverlay extends FrameLayout {
         playback.seek(Math.max(0L, Math.min(duration - 1L, playback.position() + delta)));
         refresh(); arm();
     }
+    void focusPrimary(){toggle.requestFocus();}
     boolean visible() { return getVisibility() == VISIBLE; }
     private void arm() {
         removeCallbacks(dismiss);
@@ -231,9 +238,12 @@ final class VideoControlsOverlay extends FrameLayout {
     private static final class Icon extends View {
         String kind;
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Icon(Context context, String value) { super(context); kind = value; }
+        Icon(Context context, String value) { super(context); kind = value;setFocusable("pause".equals(value)||"play".equals(value)||"back".equals(value)); }
+
         @Override protected void onDraw(Canvas canvas) {
-            canvas.save();
+            canvas.save();
+            if(hasFocus()){paint.setStyle(Paint.Style.FILL);paint.setColor(0x88779fd2);canvas.drawCircle(getWidth()/2f,getHeight()/2f,Math.min(getWidth(),getHeight())*.46f,paint);}
+
             float size = Math.min(getWidth(), getHeight()) * ("pause".equals(kind) || "play".equals(kind) ? 0.66f : 0.56f);
             canvas.translate((getWidth() - size) / 2f, (getHeight() - size) / 2f);
             canvas.scale(size / 24f, size / 24f);

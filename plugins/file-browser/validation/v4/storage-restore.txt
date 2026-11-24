@@ -1,0 +1,34 @@
+PASS Android 9 emulator / API 28
+PASS directory loads: 资料库  /  本机存储 / 2 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS directory loads: 资料库  /  files  ·  content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata%2Fxiao.bu.filebrowserprobe%2Ffiles / 2 项 · 方向键选择，确定打开
+PASS persisted directory reopens without broad storage permission
+PASS directory loads: 资料库  /  files  ·  content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata%2Fxiao.bu.filebrowserprobe%2Ffiles / 2 项 · 方向键选择，确定打开
+PASS saf-restored reuses web-TV playback controls
+PASS saf-restored decoded dimensions 640x360
+PASS saf-restored clock advances 23 -> 2179
+PASS saf-restored native renderer reported first frame
+CAPTURE saf-restored
+PASS saf-restored remote pause
+PASS saf-restored remote resume
+PASS saf-restored remote seek +10s
+PASS saf-restored background pause
+PASS saf-restored foreground resume
+PASS Android 9 emulator / API 28
+PASS directory loads: 资料库  /  本机存储 / 2 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS directory loads: 资料库  /  files  ·  content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata%2Fxiao.bu.filebrowserprobe%2Ffiles / 2 项 · 方向键选择，确定打开
+PASS persisted directory reopens without broad storage permission
+PASS directory loads: 资料库  /  files  ·  content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata%2Fxiao.bu.filebrowserprobe%2Ffiles / 2 项 · 方向键选择，确定打开
+PASS saf-restored reuses web-TV playback controls
+PASS saf-restored decoded dimensions 640x360
+PASS saf-restored clock advances 23 -> 2179
+PASS saf-restored native renderer reported first frame
+CAPTURE saf-restored
+PASS saf-restored remote pause
+PASS saf-restored remote resume
+PASS saf-restored remote seek +10s
+PASS saf-restored background pause
+PASS saf-restored foreground resume
+STORAGE_RESULT=PASS
+

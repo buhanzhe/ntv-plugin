@@ -1,0 +1,10 @@
+{
+  "sdk": 28,
+  "plugin_sha256": "27bf1f6f81c194faf33b2193b70b18fb0e81a3223ddcc204c99be3a7123b4098",
+  "phases": [
+    "grant",
+    "restore"
+  ],
+  "result": "PASS",
+  "limitation": "ROM uses install-granted storage; AppOps and SAF tested; native runtime deny/allow dialog not exercised"
+}

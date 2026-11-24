@@ -27,7 +27,7 @@ with zipfile.ZipFile(jar) as archive:
     # DocumentsContract is deliberately isolated in the SDK-guarded ModernStorage.
     for name in types:
         if name.startswith(('Ljava/', 'Ljavax/', 'Landroid/')):
-            assert name in legacy_types or name == 'Landroid/provider/DocumentsContract;', name
+            assert name in legacy_types or name in {'Landroid/provider/DocumentsContract;','Landroid/content/UriPermission;','Landroid/app/AppOpsManager;'}, name
     for forbidden in ['Ljava/lang/AutoCloseable;', 'Ljava/util/Objects;', 'Ljava/nio/charset/StandardCharsets;',
                       'Landroid/webkit/WebView;']:
         assert forbidden not in types, forbidden

@@ -7,6 +7,8 @@ import jcifs.CIFSContext;
 import jcifs.config.PropertyConfiguration;
 import jcifs.context.BaseContext;
 import jcifs.smb.*;
+import jcifs.dcerpc.DcerpcHandle;
+import jcifs.dcerpc.msrpc.MsrpcShareEnum;
 
 /** Explicit server/share connection; credentials never form part of a URL. */
 public final class SmbSession implements Closeable {
@@ -29,6 +31,10 @@ public final class SmbSession implements Closeable {
         config.setProperty("jcifs.smb.client.soTimeout", "10000");
         config.setProperty("jcifs.smb.client.responseTimeout", "10000");
         config.setProperty("jcifs.smb.client.disableSMB1", "true");
+        // Guest sessions have no signing key. Permit their share-enumeration
+        // pipe without imposing the library's extra client-side IPC policy.
+        // Authenticated sessions and server-required signing remain enforced.
+        if(user.isEmpty())config.setProperty("jcifs.smb.client.ipcSigningEnforced","false");
         // ICS omits Cp850. SMB2 paths/credentials use Unicode; OEM is only a legacy fallback.
         config.setProperty("jcifs.encoding", "US-ASCII");
         config.setProperty("jcifs.smb.client.useUnicode", "true");
@@ -39,6 +45,20 @@ public final class SmbSession implements Closeable {
     }
     public List<BrowserEntry> list(String url) throws IOException {
         List<BrowserEntry> result = new ArrayList<>();
+        // The library's server-root RPC enumeration drops the URL port. Preserve
+        // it explicitly so forwarded/custom-port servers behave like port 445.
+        final URI uri;
+        try {uri=new URI(url.replace(" ","%20"));}catch(java.net.URISyntaxException error){throw new IOException("无效的 SMB 路径",error);}
+        if(uri.getPort()>0&&(uri.getPath()==null||"/".equals(uri.getPath()))){
+            try(DcerpcHandle handle=DcerpcHandle.getHandle("ncacn_np:"+uri.getRawAuthority()+"[\\PIPE\\srvsvc]",context)){
+                MsrpcShareEnum call=new MsrpcShareEnum(uri.getHost());handle.sendrecv(call);
+                if(call.retval!=0)throw new SmbException(call.retval,true);
+                for(FileEntry entry:call.getEntries())if(entry.getType()==jcifs.SmbConstants.TYPE_SHARE){
+                    String name=entry.getName();result.add(new BrowserEntry(name+"/","smb://"+uri.getRawAuthority()+"/"+name+"/",true,2));
+                }
+            }
+            return result;
+        }
         try (SmbFile folder = new SmbFile(url, context)) {
             SmbFile[] files = folder.listFiles();
             try {

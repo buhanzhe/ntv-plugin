@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Exercises real HTTP sockets, byte ranges and (optionally) an authenticated SMB2 server. */
 public final class TransportTest {
     static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
+    static byte[] hex(String value){byte[] bytes=new byte[value.length()/2];for(int i=0;i<bytes.length;i++)bytes[i]=(byte)Integer.parseInt(value.substring(i*2,i*2+2),16);return bytes;}
     static byte[] request(String url, String method, String range) throws Exception {
         URL u = new URL(url);
         try (Socket socket = new Socket(u.getHost(), u.getPort())) {
@@ -26,6 +27,13 @@ public final class TransportTest {
         check(new String(response, "ISO-8859-1").startsWith("HTTP/1.1 " + code), "HTTP " + code);
     }
     public static void main(String[] args) throws Exception {
+        // RFC 4493 AES-CMAC known answers, including reset and incremental updates.
+        javax.crypto.Mac cmac=javax.crypto.Mac.getInstance("AESCMAC",new SmbCryptoProvider());
+        cmac.init(new javax.crypto.spec.SecretKeySpec(hex("2b7e151628aed2a6abf7158809cf4f3c"),"HMAC"));
+        check(Arrays.equals(cmac.doFinal(),hex("bb1d6929e95937287fa37d129b756746")),"AES-CMAC empty vector");
+        byte[] block=hex("6bc1bee22e409f96e93d7e117393172a");cmac.update(block,0,7);cmac.update(block,7,9);
+        check(Arrays.equals(cmac.doFinal(),hex("070a16b46b4d4144f79bdd9dd04a287c")),"AES-CMAC incremental vector");
+        System.out.println("PASS AES-CMAC standard vectors / reset / incremental updates");
         byte[] data = new byte[256 * 1024]; for (int i = 0; i < data.length; i++) data[i] = (byte)i;
         AtomicInteger reads = new AtomicInteger(), closed = new AtomicInteger();
         MediaProxy.Source source = () -> new MediaProxy.Reader() {

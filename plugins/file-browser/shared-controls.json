@@ -3,7 +3,11 @@
     "upstream": "https://github.com/buhanzhe/NativeWasmTv",
     "path": "app/src/main/java/xiao/bu/tv/VideoControlsOverlay.java",
     "sha256": "bb9f0192e38885648637cfc28952a79d8a722af9fc263d63012f1e3af4a1228b",
-    "revision": "ce22fdcce877fb2d6ef62237999eed307c2ab999"
+    "revision": "ce22fdcce877fb2d6ef62237999eed307c2ab999",
+    "plugin_adaptations": [
+      "API 14 compatibility and cached glass styling",
+      "Remote focus highlight, primary control focus and 10-second seek keys"
+    ]
   },
   "LoadingSpinnerView.java": {
     "upstream": "https://github.com/buhanzhe/NativeWasmTv",

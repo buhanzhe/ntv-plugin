@@ -1,0 +1,10 @@
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+SERVER samba300-encrypted API 28
+PASS unsupported protocol fails without escaping modal
+PASS remote BACK recovers from failed connection
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+SERVER samba300-encrypted API 28
+PASS unsupported protocol fails without escaping modal
+PASS remote BACK recovers from failed connection
+SMB_RESULT=PASS
+

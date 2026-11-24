@@ -20,6 +20,7 @@ parser.add_argument('--serial',required=True)
 parser.add_argument('--host',required=True,help='LAN address reachable from the device')
 parser.add_argument('--port',type=int,default=39628)
 parser.add_argument('--guest',action='store_true')
+parser.add_argument('--skip-scan',action='store_true',help='Test the explicit fixture port when LAN discovery is filtered')
 parser.add_argument('--screenshots',action='store_true')
 parser.add_argument('--perf',action='store_true')
 parser.add_argument('--adb',default='D:/android/sdk/platform-tools/adb.exe')
@@ -58,7 +59,7 @@ run('push',str(video),remote+'/sample.mp4',stdout=subprocess.DEVNULL)
 (fixture/'hidden.txt').write_text('video filter fixture')
 run('push',str(fixture/'hidden.txt'),remote+'/hidden.txt',stdout=subprocess.DEVNULL)
 run('shell','input','keyevent','224')
-command=['shell','am','instrument','-w','-e','smb',f'smb://{args.host}:{port}/videos/','-e','scanHost',args.host,'-e','guest','true' if args.guest else 'false','-e','screenshots','true' if args.screenshots else 'false','-e','perf','true' if args.perf else 'false',package+'/'+package+'.Probe']
+command=['shell','am','instrument','-w','-e','smb',f'smb://{args.host}:{port}/videos/','-e','scanHost',args.host,'-e','skipScan',str(args.skip_scan).lower(),'-e','guest','true' if args.guest else 'false','-e','screenshots','true' if args.screenshots else 'false','-e','perf','true' if args.perf else 'false',package+'/'+package+'.Probe']
 process=subprocess.Popen(adb+command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
 lines=[];first_frame=None;captured=set()
 def collect():

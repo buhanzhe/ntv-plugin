@@ -21,6 +21,13 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     private LinearLayout browser, form;
     private LinearLayout discovery;
     private View discoveryShell;
+    private View libraryShell,accessShell;
+    private Button accessButton;
+    private Button[] discoveryTabs;
+    private GridView devices;
+    private int nextSelection,playingSelection;
+    private final int[] homeSelection=new int[2];
+    private final ArrayDeque<Integer> selections=new ArrayDeque<>();
     private LanScanner scanner;
     private TextView status, path;
     private GridView list;
@@ -52,22 +59,24 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
             public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
                     if (event.getAction() == KeyEvent.ACTION_UP) return onBack();
-                    return current != null || form != null || discovery != null || video != null;
+                    return current != null || form != null || discovery != null || accessShell!=null || video != null;
                 }
                 if (video != null && event.getAction() == KeyEvent.ACTION_DOWN) {
                     int key = event.getKeyCode();
-                    if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+                    if(key==KeyEvent.KEYCODE_MENU||key==KeyEvent.KEYCODE_DPAD_DOWN&&!controller.hasFocus()){controller.show();controller.focusPrimary();return true;}
+                    if ((key == KeyEvent.KEYCODE_DPAD_CENTER || key==KeyEvent.KEYCODE_ENTER)&&!controller.hasFocus() || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
                         if (mediaReady) {if (video.isPlaying()) video.pause(); else video.start();} controller.show(); return true;
                     }
-                    if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    if (!controller.hasFocus()&&(key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT)) {
                         if(mediaReady)controller.step(key == KeyEvent.KEYCODE_DPAD_LEFT ? -10000 : 10000);
                         controller.show(); return true;
                     }
                 }
                 return super.dispatchKeyEvent(event);
             }
+            public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)resumeStorageAccess();}
         };
-        browser = column();browser.setPadding(dp(12),0,0,0);root.addView(withSidebar(browser,0,true));
+        browser = column();browser.setPadding(dp(12),0,0,0);libraryShell=withSidebar(browser,0,true);root.addView(libraryShell);
         LinearLayout heading = new LinearLayout(context); heading.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titles = column(); titles.addView(label("媒体库",25));
         heading.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
@@ -75,11 +84,6 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         button(actions, "选择视频", () -> this.host.chooseFiles(files -> {
             if (!disposed && files != null && files.length > 0) play(files[0]);
         }, "video/*", false));
-        if (Build.VERSION.SDK_INT >= 21) button(actions, "选择目录", () -> this.host.chooseDirectory(files -> {
-            if (!disposed && files != null && files.length > 0) {
-                stack.clear(); navigate(new BrowserEntry("授权目录", files[0].toString(), true, 1), false);
-            } else if (!disposed) status.setText("未选择目录，或设备没有系统文件选择器；可使用本机 / USB 入口");
-        }));
         button(actions, "上一级", () -> onBack());
         HorizontalScrollView actionScroll = new HorizontalScrollView(context); actionScroll.setHorizontalScrollBarEnabled(false); actionScroll.addView(actions);
         heading.addView(actionScroll,new LinearLayout.LayoutParams(dp(156),-2));browser.addView(heading);
@@ -104,13 +108,13 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         home(); return root;
     }
     private void home() {
-        stack.clear(); current = null; path.setText(storageTab==0?"资料库  /  本机存储":"设备  /  U 盘与移动硬盘");
+        stack.clear();selections.clear(); current = null;nextSelection=homeSelection[storageTab]; path.setText(storageTab==0?"资料库  /  本机存储":"设备  /  U 盘与移动硬盘");
         final int selectedTab=storageTab;
         load(() -> {
             LinkedHashSet<String> roots = new LinkedHashSet<>();
             File primary=Environment.getExternalStorageDirectory();
             if(selectedTab==0){
-                List<BrowserEntry> local=new ArrayList<>();local.add(new BrowserEntry("本机存储",primary.getAbsolutePath(),true,0));
+                List<BrowserEntry> local=new ArrayList<>();if(Build.VERSION.SDK_INT>=21)local.addAll(ModernStorage.savedTrees(context,0));local.add(new BrowserEntry("本机存储",primary.getAbsolutePath(),true,0));
                 for(String name:new String[]{"Movies","Download"}){File dir=new File(primary,name);if(dir.isDirectory())local.add(new BrowserEntry(name.equals("Movies")?"影片":"下载",dir.getAbsolutePath(),true,0));}
                 return local;
             }
@@ -124,7 +128,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
                 if (mounts != null) for (File mount : mounts) if (mount.isDirectory() && mount.canRead()
                         && !Arrays.asList("emulated","self","asec","obb","secure","shell","media_rw","runtime","user","mnt").contains(mount.getName())) roots.add(mount.getAbsolutePath());
             }
-            List<BrowserEntry> result = new ArrayList<>();
+            List<BrowserEntry> result = new ArrayList<>();if(Build.VERSION.SDK_INT>=21)result.addAll(ModernStorage.savedTrees(context,1));
             LinkedHashSet<String> seen=new LinkedHashSet<>();
             for (String value : roots) {File mount=new File(value);String canonical=mount.getCanonicalPath();
                 if(canonical.equals(primary.getCanonicalPath())||!seen.add(canonical)||!mount.canRead())continue;
@@ -134,7 +138,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         });
     }
     private void navigate(BrowserEntry folder, boolean push) {
-        if (push && current != null) stack.push(current);
+        if(push){if(current!=null){stack.push(current);selections.push(Math.max(0,list.getSelectedItemPosition()));}else homeSelection[storageTab]=Math.max(0,list.getSelectedItemPosition());}
         current = folder; path.setText("资料库  /  "+folder.name+"  ·  "+folder.location);
         if (folder.kind == 0 && !ensureStoragePermission()) return;
         final SmbSession session = smb;
@@ -150,14 +154,16 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         });
     }
     private boolean ensureStoragePermission() {
-        if (Build.VERSION.SDK_INT < 23 || Build.VERSION.SDK_INT > 32
+        if (Build.VERSION.SDK_INT < 23
                 || ModernStorage.canReadSharedStorage(context)) return true;
         generation++;
         storagePermissionNeeded = true;
         if (pending != null) pending.cancel(true);
         entries.clear(); changed();
         status.setText("请允许读取本机视频；也可使用“选择目录”授权访问");
-        if (!storagePermissionPending && context instanceof android.app.Activity) {
+        if(accessButton!=null)accessButton.requestFocus();
+        if (!storagePermissionPending && context instanceof android.app.Activity&&ModernStorage.readPermission(context)!=null
+                && !ModernStorage.runtimeReadGranted(context)) {
             storagePermissionPending = true;
             final long deadline = SystemClock.uptimeMillis() + 30000;
             ModernStorage.requestSharedStorage((android.app.Activity)context);
@@ -167,14 +173,14 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
                     if (disposed || !storagePermissionPending) return;
                     if (ModernStorage.canReadSharedStorage(context)) {
                         storagePermissionPending = false;
-                        storagePermissionNeeded = false;
-                        if (current != null && current.kind == 0) navigate(current, false);
+                        resumeStorageAccess();
                         return;
                     }
                     if (!root.hasWindowFocus()) dialogSeen = true;
                     if (SystemClock.uptimeMillis() >= deadline || dialogSeen && root.hasWindowFocus()) {
                         storagePermissionPending = false;
                         status.setText("未获得读取权限，请点击刷新重试，或使用“选择目录”");
+                        if(accessButton!=null)accessButton.requestFocus();
                         return;
                     }
                     main.postDelayed(this, 500);
@@ -183,18 +189,48 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         }
         return false;
     }
+    private void resumeStorageAccess(){
+        if(disposed||!storagePermissionNeeded||Build.VERSION.SDK_INT<23||!ModernStorage.canReadSharedStorage(context))return;
+        storagePermissionNeeded=storagePermissionPending=false;
+        if(current!=null&&current.kind==0)navigate(current,false);else if(current==null)home();
+    }
+    private void chooseTree(){
+        if(Build.VERSION.SDK_INT<21)return;
+        final int tab=storageTab;closeAccess();
+        host.chooseDirectory(files->{
+            if(disposed)return;
+            if(files==null||files.length==0){status.setText("未选择目录；若电视没有文件选择器，请在应用权限设置中允许文件读取");if(accessButton!=null)accessButton.requestFocus();return;}
+            final Uri tree=files[0];stack.clear();selections.clear();current=new BrowserEntry("授权目录",tree.toString(),true,1);path.setText("资料库 / 已授权目录");
+            load(()->{ModernStorage.saveTree(context,tree,tab);return ModernStorage.documents(context,tree);});
+        });
+    }
+    private void showAccess(){
+        if(accessShell!=null)return;if(form!=null)closeForm();closeDiscovery();
+        FileUi.Surface panel=new FileUi.Surface(context);accessShell=panel;
+        LinearLayout content=column();content.setPadding(dp(24),dp(12),dp(24),dp(12));content.addView(label("文件授权",24));
+        content.addView(label("允许读取本机视频，或选择一个文件夹。授权目录会保留在对应存储页。",12));
+        button(content,"允许读取视频",()->{closeAccess();if(Build.VERSION.SDK_INT<23||ModernStorage.canReadSharedStorage(context)){if(current!=null)navigate(current,false);else home();}else ensureStoragePermission();});
+        if(Build.VERSION.SDK_INT>=21)button(content,"选择目录",()->chooseTree());
+        button(content,"应用权限设置",()->{try{storagePermissionNeeded=true;closeAccess();context.startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+context.getPackageName())));}catch(android.content.ActivityNotFoundException error){status.setText("设备未提供应用权限设置，请从电视设置中允许文件读取");}});
+        if(Build.VERSION.SDK_INT>=21)button(content,"已授权目录",()->{closeAccess();stack.clear();selections.clear();current=null;path.setText("资料库 / 已授权目录");load(()->ModernStorage.savedTrees(context,-1));});
+        button(content,"返回",()->closeAccess());
+        ScrollView scroll=new ScrollView(context);scroll.addView(content);panel.addView(scroll);libraryShell.setVisibility(View.GONE);root.addView(panel,new FrameLayout.LayoutParams(-1,-1));
+        for(int i=0;i<content.getChildCount();i++)if(content.getChildAt(i) instanceof Button){content.getChildAt(i).requestFocus();break;}
+    }
+    private void closeAccess(){if(accessShell!=null){root.removeView(accessShell);accessShell=null;libraryShell.setVisibility(View.VISIBLE);if(accessButton!=null)accessButton.requestFocus();}}
     private void load(Task task) {
-        int token = ++generation;final boolean preserveOrder=current==null&&storageTab==0; entries.clear(); changed(); status.setText("正在读取…");
+        int token = ++generation;final int restore=nextSelection;nextSelection=0;final boolean preserveOrder=current==null&&storageTab==0; entries.clear(); changed(); status.setText("正在读取…");
         if (pending != null) pending.cancel(true); worker.purge();
         pending = worker.submit(() -> {
             try {
                 List<BrowserEntry> result = task.run(); if(!preserveOrder)Collections.sort(result);
                 main.post(() -> { if (!disposed && token == generation) {
                     entries.addAll(result); changed(); status.setText(result.isEmpty() ? (current==null&&storageTab==1?"尚未发现外接存储 · 插入设备后点击刷新":"此目录没有视频或子文件夹") : result.size() + " 项 · 方向键选择，确定打开");
-                    list.setSelection(0); list.requestFocus();
+                    list.requestFocus();list.setSelection(Math.min(restore,Math.max(0,result.size()-1)));
+                    if(result.isEmpty()&&accessButton!=null)accessButton.requestFocus();
                 }});
-            } catch (Exception | LinkageError error) { main.post(() -> { if (!disposed && token == generation)
-                status.setText("读取失败：请检查设备连接、共享名、账号和访问权限；本机目录可用“选择目录”授权后重试"); }); }
+            } catch (Exception | LinkageError error) { main.post(() -> { if (!disposed && token == generation){
+                status.setText(current!=null&&current.kind==2?"SMB 目录读取失败，请检查连接、账号和共享权限后重试":"目录不可读：请打开“文件授权”允许读取或重新授权目录；也请确认设备已挂载");if(accessButton!=null)accessButton.requestFocus();} }); }
         });
     }
     private void changed() { ((ArrayAdapter<?>)list.getAdapter()).notifyDataSetChanged(); }
@@ -214,14 +250,14 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
                 view.bind(getItem(position),"SMB 共享 · 免密优先",2);view.setLayoutParams(new AbsListView.LayoutParams(-1,dp(140)));return view;
             }
         };
-        GridView devices = grid();devices.setTag("scan-devices"); devices.setAdapter(adapter);
+        devices = grid();devices.setTag("scan-devices"); devices.setAdapter(adapter);
         devices.setOnItemClickListener((parent, view, position, id) -> {
             String address = "smb://" + hosts.get(position) + "/";
             closeDiscovery(); connectForm(address, true);
         });
         page.addView(devices, new LinearLayout.LayoutParams(-1, 0, 1));
         page.addView(label("选择设备即可尝试免密访问  ·  也支持手动连接", 11));
-        FileUi.Surface surface=new FileUi.Surface(context);discoveryShell=surface;surface.addView(withSidebar(page,2,false));root.addView(surface,new FrameLayout.LayoutParams(-1,-1));devices.requestFocus();
+        FileUi.Surface surface=new FileUi.Surface(context);discoveryShell=surface;surface.addView(withSidebar(page,2,false));libraryShell.setVisibility(View.GONE);root.addView(surface,new FrameLayout.LayoutParams(-1,-1));devices.requestFocus();
         scanner = new LanScanner(Build.VERSION.SDK_INT<=15?8:16); scanner.start(new LanScanner.Listener() {
             public void found(String address) { main.post(() -> {
                 if (disposed || discovery != page || hosts.contains(address)) return;
@@ -238,7 +274,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     }
     private void closeDiscovery() {
         if (scanner != null) { scanner.close(); scanner = null; }
-        if (discovery != null) { root.removeView(discoveryShell);discoveryShell=null; discovery = null; list.requestFocus(); }
+        if (discovery != null) { root.removeView(discoveryShell);discoveryShell=null; discovery = null;devices=null;libraryShell.setVisibility(View.VISIBLE); list.requestFocus(); }
     }
     private void connectForm(String initialAddress, boolean automatic) {
         if (form != null) return;
@@ -286,7 +322,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         });
         button(form, "取消", () -> closeForm());
         ScrollView scroll = new ScrollView(context);scroll.setFillViewport(false);scroll.setPadding(dp(28),dp(14),dp(28),dp(14));scroll.setBackgroundColor(0xcc0c1c34); scroll.setTag("connection"); scroll.addView(form);
-        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1)); address.requestFocus();
+        libraryShell.setVisibility(View.GONE);root.addView(scroll, new FrameLayout.LayoutParams(-1, -1)); address.requestFocus();
         if (automatic) { Button connect = null; for (int i = 0; i < form.getChildCount(); i++) {
             View child = form.getChildAt(i); if (child instanceof Button && "连接".contentEquals(((Button)child).getText())) connect = (Button)child;
         } if (connect != null) connect.performClick(); }
@@ -298,7 +334,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         input.setInputType(InputType.TYPE_CLASS_TEXT | (password ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS));
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,dp(40));params.bottomMargin=dp(9);form.addView(input,params); return input;
     }
-    private void closeForm() { generation++; if (pending != null) pending.cancel(true); View modal = root.findViewWithTag("connection"); if (modal != null) root.removeView(modal); form = null; list.requestFocus(); }
+    private void closeForm() { generation++; if (pending != null) pending.cancel(true); View modal = root.findViewWithTag("connection"); if (modal != null) root.removeView(modal); form = null;libraryShell.setVisibility(View.VISIBLE); list.requestFocus(); }
     private void playSmb(BrowserEntry entry) {
         playbackTitle=entry.name;
         try { stopVideo(); proxy = new MediaProxy(smb.source(entry.location)); startVideo(Uri.parse(proxy.url())); }
@@ -306,6 +342,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     }
     private void play(Uri uri) { playbackTitle=uri.getLastPathSegment()==null?"视频":uri.getLastPathSegment();stopVideo(); startVideo(uri); }
     private void startVideo(Uri uri) {
+        playingSelection=Math.max(0,list.getSelectedItemPosition());libraryShell.setVisibility(View.GONE);
         playback = new FrameLayout(context); playback.setBackgroundColor(Color.BLACK);
         video = new VideoView(context); FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
         playback.addView(video, params); root.addView(playback, new FrameLayout.LayoutParams(-1, -1));
@@ -339,23 +376,21 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         if (video != null) { video.stopPlayback(); video = null; }
         if (playback != null) { root.removeView(playback); playback = null; }
         if (proxy != null) { proxy.close(); proxy = null; }
-        if (list != null) list.requestFocus();
+        if(libraryShell!=null)libraryShell.setVisibility(View.VISIBLE);
+        if (list != null) {list.requestFocus();list.setSelection(playingSelection);}
     }
     public boolean onBack() {
         if (video != null) { stopVideo(); return true; }
+        if(accessShell!=null){closeAccess();return true;}
         if (discovery != null) { closeDiscovery(); return true; }
         if (form != null) { generation++; if (pending != null) pending.cancel(true); closeForm(); return true; }
-        if (!stack.isEmpty()) { navigate(stack.pop(), false); return true; }
+        if (!stack.isEmpty()) { nextSelection=selections.isEmpty()?0:selections.pop();navigate(stack.pop(), false); return true; }
         if (current != null) { home(); return true; }
         return false;
     }
     public void setActive(boolean active) {
         foreground=active;
-        if (active && storagePermissionNeeded && Build.VERSION.SDK_INT >= 23
-                && ModernStorage.canReadSharedStorage(context)) {
-            storagePermissionNeeded = storagePermissionPending = false;
-            if (current != null && current.kind == 0) navigate(current, false);
-        }
+        if(active)resumeStorageAccess();
         if (video != null) {
             if (!active) { resume = video.isPlaying(); video.pause();if(controller!=null)controller.hide(); }
             else if (resume) { video.start(); resume = false; }
@@ -364,7 +399,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     public void update(long positionMs, boolean playing) {}
     private void cleanup(SmbSession session) { new Thread(() -> session.close(), "files-smb-close").start(); }
     public void dispose() {
-        disposed = true; generation++; closeDiscovery(); stopVideo(); worker.shutdownNow(); main.removeCallbacksAndMessages(null);
+        disposed = true; generation++; closeAccess();closeDiscovery(); stopVideo(); worker.shutdownNow(); main.removeCallbacksAndMessages(null);
         if (smb != null) { cleanup(smb); smb = null; }
     }
     private int dp(int value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
@@ -372,14 +407,16 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     private TextView label(String text, int size) { TextView view = new TextView(context); view.setText(text); view.setTextSize(size);view.setTextColor(size<=11?FileUi.MUTED:FileUi.INK);view.setTypeface(android.graphics.Typeface.create("sans-serif",size>=22?android.graphics.Typeface.BOLD:android.graphics.Typeface.NORMAL)); view.setPadding(0, dp(3), 0, dp(3)); return view; }
     private void button(LinearLayout parent, String title, Runnable action) { Button button = new Button(context); button.setText(title);FileUi.button(button,false); button.setOnClickListener(v -> action.run());LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(parent.getOrientation()==LinearLayout.VERTICAL?-1:-2,dp(32));params.rightMargin=dp(6);params.bottomMargin=dp(5);parent.addView(button,params); }
     private GridView grid(){GridView grid=new GridView(context);grid.setNumColumns(GridView.AUTO_FIT);grid.setColumnWidth(dp(120));grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);grid.setHorizontalSpacing(dp(8));grid.setVerticalSpacing(dp(6));grid.setPadding(0,dp(2),0,dp(2));grid.setClipToPadding(false);grid.setCacheColorHint(Color.TRANSPARENT);grid.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        grid.setOnKeyListener((v,key,event)->{if(event.getAction()==KeyEvent.ACTION_DOWN&&key==KeyEvent.KEYCODE_DPAD_LEFT){int columns=Math.max(1,grid.getNumColumns());if(Math.max(0,grid.getSelectedItemPosition())%columns==0){Button[] targets=discovery!=null?discoveryTabs:browserTabs;Button target=targets[discovery!=null?2:storageTab];target.requestFocus();return true;}}return false;});
         grid.setOnFocusChangeListener((v,focused)->{for(int i=0;i<grid.getChildCount();i++)grid.getChildAt(i).invalidate();});return grid;}
     private View tabs(int active,boolean remember){
         LinearLayout strip=column();strip.setPadding(dp(9),dp(12),dp(9),dp(10));strip.setBackgroundDrawable(FileUi.plate(0x885575a2,0x553f597e,dp(18),0x8891b8e8));
         LinearLayout brand=new LinearLayout(context);brand.setGravity(Gravity.CENTER_VERTICAL);brand.addView(FileUi.appIcon(context),new LinearLayout.LayoutParams(dp(32),dp(32)));TextView name=label("文件",21);LinearLayout.LayoutParams word=new LinearLayout.LayoutParams(-2,-2);word.leftMargin=dp(9);brand.addView(name,word);strip.addView(brand);strip.addView(label("位置",11));
         Button[] choices=new Button[3];String[] titles={"本机","外接存储","SMB"};
         for(int i=0;i<3;i++){final int target=i;Button tab=new Button(context);tab.setText(titles[i]);FileUi.button(tab,i==active);android.graphics.drawable.BitmapDrawable icon=new android.graphics.drawable.BitmapDrawable(context.getResources(),FileUi.glyph(i==2?2:1));icon.setBounds(0,0,dp(21),dp(20));tab.setCompoundDrawables(icon,null,null,null);tab.setCompoundDrawablePadding(dp(6));tab.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,dp(35));params.bottomMargin=dp(5);strip.addView(tab,params);choices[i]=tab;
+            tab.setOnKeyListener((v,key,event)->{if(event.getAction()==KeyEvent.ACTION_DOWN&&key==KeyEvent.KEYCODE_DPAD_RIGHT){GridView grid=discovery!=null?devices:list;if(grid!=null&&grid.getCount()>0){grid.requestFocus();grid.setSelection(Math.max(0,grid.getSelectedItemPosition()));return true;}}return false;});
             tab.setOnClickListener(v->{if(form!=null)closeForm();if(target==2){discover();return;}closeDiscovery();storageTab=target;for(int j=0;j<3;j++)FileUi.button(browserTabs[j],j==target);home();});}
-        strip.addView(new View(context),new LinearLayout.LayoutParams(1,0,1));button(strip,"刷新",()->{if(discovery!=null)discover();else if(current==null)home();else navigate(current,false);});strip.addView(label("方向键选择\n确定打开\n返回上一级",10));if(remember)browserTabs=choices;return strip;
+        strip.addView(new View(context),new LinearLayout.LayoutParams(1,0,1));button(strip,"文件授权",()->showAccess());if(remember)accessButton=(Button)strip.getChildAt(strip.getChildCount()-1);button(strip,"刷新",()->{if(discovery!=null)discover();else if(current==null)home();else navigate(current,false);});strip.addView(label("方向键选择\n确定打开\n返回上一级",10));if(remember)browserTabs=choices;else discoveryTabs=choices;return strip;
     }
     private View withSidebar(LinearLayout content,int active,boolean remember){LinearLayout shell=new LinearLayout(context);shell.setPadding(dp(12),dp(12),dp(12),dp(10));int width=Math.min(dp(166),Math.max(dp(112),context.getResources().getDisplayMetrics().widthPixels/5));shell.addView(tabs(active,remember),new LinearLayout.LayoutParams(width,-1));shell.addView(content,new LinearLayout.LayoutParams(0,-1,1));return shell;}
 }
