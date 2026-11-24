@@ -340,6 +340,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Screen unconfiguredScreen() {
         return new Screen(Tab.SITES, "站点", true, () -> {
+            if(!configUrl.isEmpty())return;
             TextView hint=ui.text("请在插件地址的 url 参数中指定配置源",24,BoxUi.SUB);
             hint.setPadding(0,ui.px(24),0,ui.px(16));body.addView(hint);
             body.addView(ui.text("tvbox.jar?url=配置地址",22,BoxUi.TEXT));
@@ -367,7 +368,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     choices(body, choices, 4, 64);
                     if (choices.isEmpty()) message("配置里没有可用站点");
                 });
-                show(next, true);
+                show(next, !topLevel);
             };
         });
     }
