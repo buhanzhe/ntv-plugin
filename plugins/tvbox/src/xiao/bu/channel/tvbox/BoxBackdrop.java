@@ -21,8 +21,9 @@ final class BoxBackdrop extends ImageView {
         if(bitmap!=current||width!=getWidth()||height!=getHeight()){
             current=bitmap;width=getWidth();height=getHeight();
             boolean poster=bitmap.getWidth()<bitmap.getHeight()*1.15f||bitmap.getWidth()<width*.6f;
-            float scale=poster?Math.min((float)height/bitmap.getHeight(),1.6f):Math.max((float)width/bitmap.getWidth(),(float)height/bitmap.getHeight());
-            float left=poster?width-bitmap.getWidth()*scale:(width-bitmap.getWidth()*scale)/2,top=(height-bitmap.getHeight()*scale)/2;
+            float scale=poster?Math.min(height*.86f/bitmap.getHeight(),1.6f):Math.max((float)width/bitmap.getWidth(),(float)height/bitmap.getHeight());
+            float left=poster?width-bitmap.getWidth()*scale:(width-bitmap.getWidth()*scale)/2;
+            float top=poster?height-bitmap.getHeight()*scale:(height-bitmap.getHeight()*scale)/2;
             matrix.setScale(scale,scale);matrix.postTranslate(left,top);
             BitmapShader image=new BitmapShader(bitmap,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);image.setLocalMatrix(matrix);
             if(poster){
