@@ -180,8 +180,10 @@ final class BoxUi extends BlUi {
                 paint.setColor(darkFocus&&focus?0xff17222b:TEXT);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.65f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);path.reset();
                 if(kind==3){canvas.drawCircle(10.3f,10.3f,7.2f,paint);canvas.drawLine(15.6f,15.6f,21.6f,21.6f,paint);}
                 else if(kind==1){
-                    canvas.drawCircle(12,12,9.3f,paint);canvas.drawCircle(12,12,1.25f,paint);
-                    for(int i=0;i<5;i++){double a=-Math.PI/2+i*Math.PI*2/5;canvas.drawCircle(12+(float)Math.cos(a)*5.6f,12+(float)Math.sin(a)*5.6f,2.35f,paint);}
+                    canvas.drawCircle(12,12,9.6f,paint);
+                    paint.setStrokeWidth(1.3f);
+                    for(int x=0;x<2;x++)for(int y=0;y<2;y++)canvas.drawCircle(8.35f+x*7.3f,8.35f+y*7.3f,2.35f,paint);
+                    paint.setStyle(Paint.Style.FILL);canvas.drawCircle(12,12,.8f,paint);
                 }
                 else if(kind==0){path.moveTo(3,7);path.lineTo(12,2.5f);path.lineTo(21,7);path.lineTo(12,11.5f);path.close();canvas.drawPath(path,paint);for(int y=12;y<=17;y+=5){path.reset();path.moveTo(3,y);path.lineTo(12,y+4.5f);path.lineTo(21,y);canvas.drawPath(path,paint);}}
                 else if(kind==2){for(int x=3;x<=14;x+=11)for(int y=3;y<=14;y+=11){rect.set(x,y,x+7,y+7);canvas.drawRoundRect(rect,2.2f,2.2f,paint);}}
