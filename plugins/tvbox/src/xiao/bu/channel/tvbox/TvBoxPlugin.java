@@ -542,7 +542,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private FrameLayout featurePanel(BoxSource.Site site, JSONObject video, String actionLabel, Runnable open) { return featurePanel(site,video,actionLabel,open,false); }
     private FrameLayout featurePanel(BoxSource.Site site, JSONObject video, String actionLabel, Runnable open, boolean fullBackdrop) {
-            LinearLayout info = ui.vertical();
+            LinearLayout info = ui.vertical(), buttons = ui.horizontal();
             TextView[] labels=new TextView[3];
             ImageView background = ui.imageView();background.setScaleType(ImageView.ScaleType.FIT_CENTER);background.setBackgroundDrawable(ui.fill(0,0));
             FrameLayout hero = new FrameLayout(context) {
@@ -552,8 +552,11 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     int posterWidth=fullBackdrop?0:Math.min(ui.px(210),w/4);
                     info.getLayoutParams().width = Math.min(Math.max(1,w-posterWidth-ui.px(fullBackdrop?0:48)), ui.px(680));
                     if(!fullBackdrop){background.getLayoutParams().width=posterWidth;}
-                    int mode=h<ui.px(260)?0:h<ui.px(340)?1:2,key=mode*16+(h<ui.px(180)?1:0)+(h<ui.px(190)?2:0)+(h<ui.px(230)?4:0)+(h<ui.px(290)?8:0);
-                    if(key!=appearance&&labels[0]!=null){appearance=key;int font=mode==0?(h<ui.px(180)?48:56):fullBackdrop?76:68;if(labels[0].length()>10)font=Math.max(44,font-12);labels[0].setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(font));labels[0].setMaxLines(1);labels[1].setMaxLines(fullBackdrop||h<ui.px(290)?1:2);labels[1].setVisibility(h<ui.px(230)?View.GONE:View.VISIBLE);labels[2].setVisibility(h<ui.px(190)?View.GONE:View.VISIBLE);info.setPadding(ui.px(fullBackdrop?12:32),ui.px(mode==0?8:20),ui.px(24),ui.px(mode==0?8:20));}
+                    int mode=h<ui.px(260)?0:h<ui.px(340)?1:2,key=mode*16+(h<ui.px(180)?1:0)+(h<ui.px(190)?2:0)+(h<ui.px(230)?4:0)+(h<ui.px(300)?8:0);
+                    if(key!=appearance&&labels[0]!=null){appearance=key;int font=mode==0?(h<ui.px(180)?48:56):fullBackdrop?76:68;if(labels[0].length()>10)font=Math.max(44,font-12);labels[0].setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(font));labels[0].setMaxLines(1);labels[1].setMaxLines(fullBackdrop||h<ui.px(300)?1:2);labels[1].setVisibility(h<ui.px(230)?View.GONE:View.VISIBLE);labels[2].setVisibility(h<ui.px(190)?View.GONE:View.VISIBLE);info.setPadding(ui.px(fullBackdrop?12:32),ui.px(mode==0?8:20),ui.px(24),ui.px(mode==0?8:20));}
+                    boolean summaryShown=labels[1]!=null&&labels[1].getParent()!=null&&labels[1].getVisibility()==View.VISIBLE;
+                    int gap=h<ui.px(180)?10:h<ui.px(220)||h<ui.px(300)&&summaryShown?12:24;
+                    ((LinearLayout.LayoutParams)buttons.getLayoutParams()).topMargin=ui.px(gap);
                     super.onMeasure(width, height);
                 }
             };
@@ -579,16 +582,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             TextView summary = ui.text(synopsis.isEmpty() ? metadata(video, "vod_area", "vod_class", "vod_actor") : synopsis, 22, BoxUi.TEXT);
             labels[1]=summary;
             summary.setMaxLines(2); summary.setEllipsize(TextUtils.TruncateAt.END);
-            summary.setPadding(0, ui.px(10), 0, ui.px(14));
+            summary.setPadding(0, ui.px(10), 0, 0);
             if (!summary.getText().toString().isEmpty()) info.addView(summary);
-            LinearLayout buttons = ui.horizontal();
             Button details = action(buttons, actionLabel, open);
             details.setBackgroundDrawable(ui.primaryFocus(details)); details.setTextColor(ui.controlText());
             details.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
             details.setMinHeight(ui.px(60));
             Button secondary=video.optString("vod_id").isEmpty()&&currentSite!=null?action(buttons,"浏览分类",()->switchTab(Tab.CATEGORIES)):action(buttons,"搜索同名",()->chooseSearchSite(videoName(video)));
             secondary.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));secondary.setMinHeight(ui.px(60));
-            info.addView(buttons);
+            LinearLayout.LayoutParams actions = new LinearLayout.LayoutParams(-1, -2);
+            actions.topMargin=ui.px(24);
+            info.addView(buttons,actions);
             hero.addView(info, new FrameLayout.LayoutParams(-1, -1));
             primary = details;
             return hero;
