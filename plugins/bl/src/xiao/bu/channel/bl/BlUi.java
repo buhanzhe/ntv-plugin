@@ -13,7 +13,6 @@ public class BlUi {
     public final Context context;final float scale;
     BlTheme theme=BlTheme.BLACK;
     public BlUi(Context c){context=c;int width=Math.max(c.getResources().getDisplayMetrics().widthPixels,c.getResources().getDisplayMetrics().heightPixels);scale=Math.max(.5f,width/1280f);}
-    public ImageView imageView(){return new ImageView(context);}
     public int px(float n){return Math.round(n*scale);}
     public TextView text(String text,int size,int color){TextView t=new TextView(context);t.setText(text);t.setTextSize(TypedValue.COMPLEX_UNIT_PX,px(size));t.setTextColor(color);t.setGravity(Gravity.CENTER_VERTICAL);t.setIncludeFontPadding(false);return t;}
     public GradientDrawable fill(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(px(radius));return d;}

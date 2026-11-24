@@ -36,6 +36,7 @@ import xiao.bu.tv.jar.ChannelPlugin;
 /** Standard MPD playback using BL's ExoPlayer core and the shared nTv HTTP transport. */
 final class BoxDashPlayer extends FrameLayout {
     private final SimpleExoPlayer player;
+    private final DefaultTrackSelector selector;
     private final TextureView surface;
     private final ChannelPlugin.PlayerUi controls;
     private final Set<Call> calls = Collections.newSetFromMap(new ConcurrentHashMap<Call, Boolean>());
@@ -47,7 +48,7 @@ final class BoxDashPlayer extends FrameLayout {
     private int width, height;
 
     BoxDashPlayer(BlUi ui, ChannelPlugin.PlayerUiHost host, BoxHttp http, BoxSource source,
-                  String url, JSONObject headers, String title) {
+                  String url, JSONObject headers, String title, Runnable episodes) {
         super(ui.context);
         setBackgroundColor(0xff000000);
         setContentDescription("TVBox 播放器");
@@ -57,17 +58,32 @@ final class BoxDashPlayer extends FrameLayout {
         addView(surface, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
         DefaultLoadControl load = new DefaultLoadControl(new com.google.android.exoplayer2.upstream.DefaultAllocator(true, 64 * 1024),
                 2000, 10000, 500, 1000, 8 * 1024 * 1024, false);
+        selector = new DefaultTrackSelector();
         player = ExoPlayerFactory.newSimpleInstance(ui.context, new DefaultRenderersFactory(ui.context).setEnableDecoderFallback(true),
-                new DefaultTrackSelector(), load);
+                selector, load);
         player.setAudioAttributes(new com.google.android.exoplayer2.audio.AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA).setContentType(C.CONTENT_TYPE_MOVIE).build(), true);
         player.setVideoTextureView(surface);
+        android.widget.TextView subtitles = ui.text("",22,0xffffffff);
+        subtitles.setGravity(Gravity.CENTER);subtitles.setShadowLayer(ui.px(2),ui.px(1),ui.px(1),0xff000000);
+        subtitles.setVisibility(GONE);
+        FrameLayout.LayoutParams textBounds = new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);
+        textBounds.leftMargin=ui.px(40);textBounds.rightMargin=ui.px(40);textBounds.bottomMargin=ui.px(230);
+        addView(subtitles,textBounds);
+        player.addTextOutput(cues->{android.text.SpannableStringBuilder text=new android.text.SpannableStringBuilder();
+            for(com.google.android.exoplayer2.text.Cue cue:cues)if(cue.text!=null){if(text.length()>0)text.append("\n");text.append(cue.text);}
+            subtitles.setText(text);subtitles.setVisibility(text.length()==0?GONE:VISIBLE);});
         controls = host.createPlayerUi(new ChannelPlugin.PlayerControls() {
             public boolean playing() { return player.getPlayWhenReady() && player.getPlaybackState() == Player.STATE_READY; }
             public boolean completed() { return player.getPlaybackState() == Player.STATE_ENDED; }
             public boolean loading() { return failure.isEmpty() && (!rendered || player.getPlaybackState() == Player.STATE_BUFFERING); }
             public String status() { return !failure.isEmpty() ? failure : loading() ? "正在加载…" : ""; }
             public String title() { return title; }
+            public boolean hasEpisodes() { return true; }
+            public void episodes() { episodes.run(); }
+            public String quality() { return height>0?width+"×"+height:""; }
+            public org.json.JSONArray trackOptions() { return BoxDashPlayer.this.trackOptions(); }
+            public void selectTrack(String id) { BoxDashPlayer.this.selectTrack(id); }
             public long duration() { return Math.max(0, player.getDuration()); }
             public long position() { return Math.max(0, player.getCurrentPosition()); }
             public void toggle() { BoxDashPlayer.this.toggle(); }
@@ -143,6 +159,40 @@ final class BoxDashPlayer extends FrameLayout {
         boolean handled = controls.surfaceGesture(event);
         if (event.getActionMasked() == MotionEvent.ACTION_UP && revealControls && !touchMoved) controls.show();
         return handled;
+    }
+
+    private org.json.JSONArray trackOptions() {
+        org.json.JSONArray rows=new org.json.JSONArray();
+        com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedTrackInfo info=selector.getCurrentMappedTrackInfo();
+        if(info==null)return rows;
+        try {
+            for(int r=0;r<info.getRendererCount();r++) {
+                int type=info.getRendererType(r);if(type!=C.TRACK_TYPE_AUDIO&&type!=C.TRACK_TYPE_TEXT)continue;
+                com.google.android.exoplayer2.source.TrackGroupArray groups=info.getTrackGroups(r);
+                com.google.android.exoplayer2.trackselection.TrackSelection selected=player.getCurrentTrackSelections().get(r);
+                for(int g=0;g<groups.length;g++)for(int t=0;t<groups.get(g).length;t++) {
+                    if(info.getTrackSupport(r,g,t)<com.google.android.exoplayer2.RendererCapabilities.FORMAT_EXCEEDS_CAPABILITIES)continue;
+                    com.google.android.exoplayer2.Format format=groups.get(g).getFormat(t);
+                    String language=format.language==null?"未标注语言":format.language;
+                    rows.put(new JSONObject().put("id",r+":"+g+":"+t)
+                            .put("label",(type==C.TRACK_TYPE_AUDIO?"音轨 · ":"字幕 · ")+language+" · "+(format.sampleMimeType==null?"":format.sampleMimeType))
+                            .put("selected",selected!=null&&selected.getSelectedFormat()==format));
+                }
+                if(type==C.TRACK_TYPE_TEXT&&groups.length>0)rows.put(new JSONObject().put("id",r+":-1:0").put("label","关闭字幕").put("selected",selected==null));
+            }
+        }catch(org.json.JSONException ignored){}
+        return rows;
+    }
+    private void selectTrack(String id) {
+        if(!id.matches("[0-9]+:-?[0-9]+:[0-9]+"))return;
+        String[] parts=id.split(":");int renderer=Integer.parseInt(parts[0]),group=Integer.parseInt(parts[1]),track=Integer.parseInt(parts[2]);
+        com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedTrackInfo info=selector.getCurrentMappedTrackInfo();
+        if(info==null||renderer>=info.getRendererCount())return;
+        DefaultTrackSelector.ParametersBuilder parameters=selector.buildUponParameters().clearSelectionOverrides(renderer).setRendererDisabled(renderer,group<0);
+        if(group>=0){com.google.android.exoplayer2.source.TrackGroupArray groups=info.getTrackGroups(renderer);
+            if(group>=groups.length||track>=groups.get(group).length)return;
+            parameters.setSelectionOverride(renderer,groups,new DefaultTrackSelector.SelectionOverride(group,track));}
+        selector.setParameters(parameters);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

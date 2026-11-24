@@ -34,21 +34,24 @@ final class BoxArt {
         workers.allowCoreThreadTimeOut(true);
     }
 
-    void load(ImageView view, String url) {
+    void load(ImageView view, String url) { load(view,url,640); }
+    void load(ImageView view, String url, int edge) {
+        String cacheKey=edge+"\n"+url;
         if (view.getBackground() == null) {
             view.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{0xff4e3b5c, 0xff29232e}));
+                    new int[]{0xff2a4050, 0xff101d2a}));
         }
         view.setTag(url);
-        Bitmap existing = url.isEmpty() ? null : cache.get(url);
+        Bitmap existing = url.isEmpty() ? null : cache.get(cacheKey);
+        if(existing==null&&edge>640&&!url.isEmpty())existing=cached(url);
         view.setImageBitmap(existing);
         if (url.isEmpty() || existing != null || closed) return;
         workers.execute(() -> {
             if (closed) return;
-            Bitmap bitmap = cache.get(url);
-            if (bitmap == null) bitmap = fetch(url);
+            Bitmap bitmap = cache.get(cacheKey);
+            if (bitmap == null) bitmap = fetch(url, edge);
             if (bitmap == null || closed) return;
-            cache.put(url, bitmap);
+            cache.put(cacheKey, bitmap);
             Bitmap result = bitmap;
             main.post(() -> {
                 if (!closed && url.equals(view.getTag())) view.setImageBitmap(result);
@@ -56,7 +59,9 @@ final class BoxArt {
         });
     }
 
-    private Bitmap fetch(String url) {
+    Bitmap cached(String url) { return cache.get("640\n"+url); }
+
+    private Bitmap fetch(String url, int edge) {
         try {
             int offset = headerOffset(url);
             String address = offset < 0 ? url : url.substring(0, offset);
@@ -81,7 +86,7 @@ final class BoxArt {
                 BitmapFactory.decodeByteArray(data, 0, data.length, options);
                 if (options.outWidth <= 0 || options.outHeight <= 0) return null;
                 options.inSampleSize = 1;
-                while (Math.max(options.outWidth, options.outHeight) / options.inSampleSize > 640) {
+                while (Math.max(options.outWidth, options.outHeight) / (options.inSampleSize * 2) >= edge) {
                     options.inSampleSize *= 2;
                 }
                 options.inJustDecodeBounds = false;

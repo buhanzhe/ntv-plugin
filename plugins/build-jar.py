@@ -108,7 +108,7 @@ def build(args):
     sources = sorted((folder / "src").rglob("*.java"))
     if not is_python:
         bl_ui = PLUGINS / "bl/src/xiao/bu/channel/bl"
-        sources.extend(bl_ui / name for name in ("BlUi.java", "BlTheme.java", "BlTile.java"))
+        sources.extend(bl_ui / name for name in ("BlUi.java", "BlTheme.java"))
         cache = Path.home() / ".gradle/caches/modules-2/files-2.1"
         for name in ("okhttp-3.12.13.jar", "okio-1.15.0.jar"):
             candidates = sorted(cache.rglob(name))
