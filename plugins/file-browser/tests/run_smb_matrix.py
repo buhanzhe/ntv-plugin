@@ -1,5 +1,7 @@
 """Real Android DEX/player matrix: Impacket plus isolated Samba/WSL instances."""
 import argparse
+from device_artifact import stage
+from device_foreground import activate
 import datetime
 import hashlib
 import json
@@ -20,18 +22,24 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--serial',required=True)
 parser.add_argument('--video',type=Path,required=True)
 parser.add_argument('--adb',default='D:/android/sdk/platform-tools/adb.exe')
+parser.add_argument('--fail-fast',action='store_true')
 parser.add_argument('--only',help='Comma-separated case names for focused retests')
 parser.add_argument('--distro',default='Ubuntu-22.04')
+parser.add_argument('--lan-host',help='Use this real LAN address for the Impacket cases, with a scoped firewall rule')
 parser.add_argument('--base-port',type=int,default=39700)
 args=parser.parse_args()
 adb=[args.adb,'-s',args.serial];package='xiao.bu.filebrowserprobe'
 out=ROOT/'output/file-browser-smb'/datetime.datetime.now().strftime('%Y%m%d-%H%M%S');out.mkdir(parents=True)
+jar=ROOT/'plugins/file-browser/dist/file-browser.jar'
+jar_hash=hashlib.sha256(jar.read_bytes()).hexdigest()
+sdk=int(subprocess.check_output(adb+['shell','getprop','ro.build.version.sdk']).decode().strip())
+external=stage(adb,jar)
 servers=[];reverses=[];samba=None;samba_root=None;results=[]
 def run(*command,**kw):return subprocess.run(list(command),check=True,**kw)
 def wslpath(path):return run('wsl','-d',args.distro,'--exec','wslpath','-a',Path(path).resolve().as_posix(),capture_output=True,text=True).stdout.strip()
 def start_impacket(port,auth):
     folder=Path(tempfile.mkdtemp(prefix='ntv-smb-'));nested=folder/'子目录 中文';nested.mkdir();shutil.copyfile(args.video,nested/'电影 sample.mp4');(folder/'hidden.txt').write_text('not video')
-    server=SimpleSMBServer(listenAddress='127.0.0.1',listenPort=port);server.addShare('媒体 videos',str(folder));server.setSMB2Support(True)
+    server=SimpleSMBServer(listenAddress=args.lan_host or '127.0.0.1',listenPort=port);server.addShare('媒体 videos',str(folder));server.setSMB2Support(True)
     if auth:server.addCredential('viewer',0,compute_lmhash('test-password'),compute_nthash('test-password'))
     stats={'bytes':0,'reads':0,'offsets':[]};internal=server._SimpleSMBServer__server
     def read(connection,instance,packet):
@@ -45,6 +53,9 @@ def start_impacket(port,auth):
     threading.Thread(target=serve,daemon=True).start();servers.append((server,folder));return stats
 try:
     for permission in ['READ_EXTERNAL_STORAGE','WRITE_EXTERNAL_STORAGE']:run(*adb,'shell','appops','set',package,permission,'allow')
+    if sdk>=37:
+        run(*adb,'shell','pm','clear-permission-flags',package,'android.permission.ACCESS_LOCAL_NETWORK','user-set','user-fixed')
+        run(*adb,'shell','pm','revoke',package,'android.permission.ACCESS_LOCAL_NETWORK')
     script=Path(__file__).with_name('samba_fixture.py')
     samba=subprocess.Popen(['wsl','-d',args.distro,'--exec','python3','-u',wslpath(script),'--video',wslpath(args.video),'--port',str(args.base_port)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=(out/'samba-setup.txt').open('w'),text=True,encoding='utf-8')
     line=samba.stdout.readline().strip()
@@ -60,21 +71,37 @@ try:
         if args.only and case['label'] not in args.only.split(','):continue
         name=case['label'];port=case['port'];print('TEST '+name,flush=True)
         # ADB reverse reaches only loopback fixtures, without exposing test shares to the LAN.
-        run(*adb,'reverse',f'tcp:{port}',f'tcp:{port}');reverses.append(port)
-        with socket.create_connection(('127.0.0.1',port),timeout=8):pass
-        address=f'smb://127.0.0.1:{port}/'+('' if case['enumerate'] else '媒体 videos/')
-        remote=['am','instrument','-w','-e','smb',address,'-e','user',case['user'],'-e','label',name,'-e','rangeHash',range_hash,'-e','negative',str(case['negative']).lower(),'-e','enumerate',str(case['enumerate']).lower(),package+'/'+package+'.SmbProbe']
+        host=args.lan_host if args.lan_host and name.startswith('impacket') else '127.0.0.1'
+        if host=='127.0.0.1':run(*adb,'reverse',f'tcp:{port}',f'tcp:{port}');reverses.append(port)
+        case['transport']='LAN' if host!='127.0.0.1' else 'ADB reverse to loopback fixture'
+        with socket.create_connection((host,port),timeout=8):pass
+        address=f'smb://{host}:{port}/'+('' if case['enumerate'] else '媒体 videos/')
+        remote=['am','instrument','-w','-e','externalJar',external,'-e','expectedHash',jar_hash,'-e','smb',address,'-e','user',case['user'],'-e','label',name,'-e','denyNetwork',str(sdk>=37 and name=='impacket-guest').lower(),'-e','rangeHash',range_hash,'-e','negative',str(case['negative']).lower(),'-e','enumerate',str(case['enumerate']).lower(),package+'/'+package+'.SmbProbe']
         command=adb+['shell',shlex.join(remote)]
-        process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace');lines=[];captured=False;watchdog=threading.Timer(150,process.kill);watchdog.start()
-        for line in process.stdout:
-            lines.append(line)
-            if 'CAPTURE smb' in line and not captured:
-                captured=True
-                if 'stats' in case:case['first_frame']=dict(case['stats'],file_bytes=args.video.stat().st_size)
-                else:
-                    status=run('wsl','-d',args.distro,'--exec','smbstatus','--configfile='+samba_root+'/'+name+'/smb.conf','--brief',capture_output=True,text=True)
-                    (out/(name+'-negotiated.txt')).write_text(status.stdout+status.stderr,encoding='utf-8')
-        process.wait(timeout=10);watchdog.cancel();text=''.join(lines);(out/(name+'.txt')).write_text(text,encoding='utf-8');print('\n'.join(line for line in text.splitlines() if line.startswith(('FAIL','SERVER','SMB_RESULT','PASS SMB','PASS password','PASS correct','PASS unsupported'))),flush=True)
+        process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
+        lines=[];captured=[False];activity_ready=threading.Event();needs_foreground=threading.Event();errors=[]
+        def collect():
+            try:
+                for line in process.stdout:
+                    lines.append(line)
+                    if line.strip()=='ACTIVITY_READY':activity_ready.set()
+                    if line.strip()=='WAIT_FOREGROUND':needs_foreground.set()
+                    if 'CAPTURE smb' in line and not captured[0]:
+                        captured[0]=True
+                        if 'stats' in case:case['first_frame']=dict(case['stats'],file_bytes=args.video.stat().st_size)
+                        else:
+                            status=run('wsl','-d',args.distro,'--exec','smbstatus','--configfile='+samba_root+'/'+name+'/smb.conf','--brief',capture_output=True,text=True,timeout=10)
+                            (out/(name+'-negotiated.txt')).write_text(status.stdout+status.stderr,encoding='utf-8')
+            except Exception as error:errors.append(str(error))
+        reader=threading.Thread(target=collect,daemon=True);reader.start()
+        if sdk>=29:activate(adb,activity_ready,needs_foreground)
+        try:process.wait(timeout=150)
+        except subprocess.TimeoutExpired:process.kill();run(*adb,'shell','am','force-stop',package);raise
+        reader.join(15)
+        if reader.is_alive():raise RuntimeError('Evidence collector did not finish')
+        text=''.join(lines)
+        if errors:text+='\nFAIL evidence collector: '+str(errors)+'\n'
+        (out/(name+'.txt')).write_text(text,encoding='utf-8');print('\n'.join(line for line in text.splitlines() if line.startswith(('FAIL','SERVER','SMB_RESULT','PASS SMB','PASS password','PASS correct','PASS unsupported','PASS plugin','PASS denied'))),flush=True)
         passed='SMB_RESULT=PASS' in text
         if 'first_frame' in case:passed=passed and case['first_frame']['bytes']<case['first_frame']['file_bytes']
         
@@ -84,6 +111,7 @@ try:
             passed=passed and protocol in negotiated and ('signed' not in name or 'AES-128-CMAC' in negotiated)
             case['negotiated']=negotiated
         case['passed']=passed;results.append(case)
+        if not passed and args.fail_fast:raise RuntimeError('Failed: '+name)
     if not all(c['passed'] for c in results):raise RuntimeError('SMB matrix contains failures')
 finally:
     for port in reverses:subprocess.run(adb+['reverse','--remove',f'tcp:{port}'],stdout=subprocess.DEVNULL)

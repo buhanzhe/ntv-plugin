@@ -1,3 +1,51 @@
+# v5 Android 17 真机与旧系统回归
+
+日期：2026-11-24。版本 5，minSdk 14，JAR 379,969 字节，SHA-256 `16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19`。下列设备均加载并核对这份最终 JAR；使用独立探针，不覆盖正式 nTv。
+
+| 设备 | 本轮结果 |
+| --- | --- |
+| Xiaomi 15 Ultra，Android 17 / API 37，探针 targetSdk 37 | 视频权限拒绝/允许、原始本机路径播放、真实系统目录授权、跨进程恢复、遥控器、8 项 SMB 矩阵通过 |
+| 用户 Android 9 / API 28 模拟器 | 真实目录授权、跨进程恢复、遥控器、8 项 SMB 矩阵通过；ROM 的运行时媒体弹窗限制见 v4 记录 |
+| GT-N7005，Android 4.0.4 / API 15 真机 | 本机与免密 SMB2 实际播放、暂停继续、跳播、前后台和代理释放通过 |
+| Android 7.1 | 本轮按用户要求暂缓；下方 v3 记录不代表 v5 已复测 |
+
+## Android 17 权限与界面
+
+真实系统视频权限对话框先拒绝、再允许，授权后自动恢复本机浏览。播放原始 Movies 路径中的测试视频，并通过真实系统文件选择器和第二次确认取得目录持久读取权限。新进程在媒体权限受限时仍能打开已授权目录并播放。验证了目录返回恢复选中卡片、网格/侧栏切换、菜单键聚焦播放控件、确定操作当前按钮、暂停继续和跳播。
+
+SDK35+ 根视图接收系统边缘留白，Android 17 实际应用区域截图中标题完整，图标、文字与焦点框保持间距。截图由系统 PixelCopy 捕获应用内容区域，排除系统状态栏。
+
+SDK37+ 且宿主 targetSdk37+ 时，扫描和 SMB 连接先检查并请求宿主已声明的 `ACCESS_LOCAL_NETWORK`；宿主缺少声明时显示升级提示。条件依据 [Android 官方文档](https://developer.android.com/privacy-and-security/local-network-permission)。本机实测中权限请求随后被系统允许，插件继续连接；没有取得可稳定重现的局域网权限“拒绝”按钮，本轮不将该拒绝分支记为实测通过。测试适配器同时等待权限状态与对话框，避免权限已允许却继续等待旧按钮。
+
+宿主未声明可用的视频读取权限时，直接引导目录授权。JAR 无法替宿主增加 Manifest 权限；Android 17、targetSdk37+ 宿主需自行声明局域网权限。
+
+[授权与原始本机播放日志](validation/v5/android17/grant.txt)、[重启恢复日志](validation/v5/android17/restore.txt)、[设备结果](validation/v5/android17/summary.json)。
+
+## Android 17 SMB 兼容性
+
+Impacket 免密及账号两项通过手机真实 Wi-Fi 局域网访问临时只读共享。其余 Samba 配置经 ADB reverse 连接隔离回环服务；这四项验证 Android 客户端协议与签名互通，不等同于厂商 NAS 的 Wi-Fi 验收。
+
+| 服务与配置 | 结果 |
+| --- | --- |
+| Impacket 0.12.0，SMB2 免密，中文共享根枚举 | 通过，无需输入账号密码 |
+| Impacket 0.12.0，SMB2 账号 | 通过，错误密码拒绝后正确密码恢复 |
+| Samba 4.15.13，SMB 2.0.2 / 2.1 访客 | 通过，服务端确认 SMB2_02 / SMB2_10 |
+| Samba 4.15.13，SMB 3.0 / 3.1.1 强制签名 | 通过，服务端确认 SMB3_00 / SMB3_11 与 AES-128-CMAC |
+| Samba，SMB3 强制传输加密 | 预期拒绝，返回后可继续操作 |
+| Samba，SMB1-only | 预期拒绝，SMB1 保持禁用 |
+
+全部正例覆盖中文/空格子目录、系统解码 640×360、播放时钟推进超过 2 秒、原生首帧回调、暂停继续、向前跳转 10 秒、前后台、HTTP Range 精确字节和释放代理。两项限速局域网测试在首帧和时钟检查点各读取 2,031,616 / 11,803,893 字节，确认边读边播。只保存地址、用户名与域，测试密码未写偏好。
+
+[完整 8 项矩阵](validation/v5/android17/matrix.json)、[免密播放](validation/v5/android17/impacket-guest.txt)、[账号播放](validation/v5/android17/impacket-auth.txt)、[SMB 3.1.1 签名协商](validation/v5/android17/samba311-signed-negotiated.txt)。日志中的设备序列号和局域网地址已替换为测试标签。
+
+## 兼容与范围
+
+API14 存根编译、最终 DEX/ABI/哈希检查、AES-CMAC RFC4493 标准向量、HTTP Range/HEAD/非法范围/令牌/端口与句柄关闭检查通过。同一 JAR 的 [4.0.4 日志](validation/v5/android4-result.txt)、[Android 9 授权](validation/v5/android9-summary.json) 与 [Android 9 SMB 矩阵](validation/v5/smb-matrix.json) 保留供核对。
+
+未实测实体 USB 插拔、Windows/NAS 厂商设备、Kerberos/域环境和人工听音；自动 TCP445 扫描本轮未重测。独立探针结果不代替完整现代 nTv 宿主验收。后续章节均为对应旧版的历史记录。
+
+---
+
 # v4 Android 9 授权、遥控器与 SMB 兼容性
 
 日期：2026-11-24。独立探针通过 DexClassLoader 加载最终发布 JAR，不覆盖正式 nTv。
@@ -8,11 +56,7 @@
 
 ## 追加设备状态
 
-用户追加要求测试 Android 7.1 和 Android 17，随后要求先只测 Android 17。7.1.1 / API25 的 MI 6 暂缓。
-
-Android17 / API37（25019PNF3C）的独立探针已由用户手动安装，并实机成功加载最终 v4 JAR、打开浏览界面、触发真实照片/视频权限窗口。自动测试在 OEM 权限弹窗的按钮识别处中断；同时观察到 targetSdk37 宿主的顶部系统边缘遮挡。
-
-已在工作区准备新版 OEM 弹窗适配、边缘留白与 SDK37 局域网授权流程；这些候选修复通过 4.0.4 和 Android9 回归。更新 Android17 探针前，该手机从 ADB 断开，尚未完成本机/目录持久授权/SMB 播放验收。**Android17 当前结果为未完成，不记为通过；已发布 JAR 仍为本页 v4。** [状态记录](validation/v4/pending-platforms.json)。
+v4 验收时，追加的 Android 7.1.1 与 Android 17 安装受限，未执行插件测试。[当时的阻塞记录](validation/v4/pending-platforms.json) 保留为历史证据；Android 17 后续 v5 实测结果见本文开头，7.1 本轮按用户要求暂缓。
 
 ## 文件授权与遥控器
 

@@ -1,0 +1,5 @@
+
+Samba version 4.15.13-Ubuntu
+PID     Username     Group        Machine                                   Protocol Version  Encryption           Signing              
+----------------------------------------------------------------------------------------------------------------------------------------
+690     nobody       nogroup      127.0.0.1 (ipv4:127.0.0.1:51162)          SMB3_00           -                    AES-128-CMAC         

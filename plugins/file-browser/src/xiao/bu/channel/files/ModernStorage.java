@@ -9,6 +9,14 @@ import java.util.*;
 
 /** Isolated from the API-15 entry point; call only after the relevant SDK check. */
 final class ModernStorage {
+    static boolean needsLocalNetwork(Context context){return android.os.Build.VERSION.SDK_INT>=37&&context.getApplicationInfo().targetSdkVersion>=37;}
+    static boolean localNetworkGranted(Context context){return context.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==android.content.pm.PackageManager.PERMISSION_GRANTED;}
+    static boolean declaresLocalNetwork(Context context){
+        try{String[] names=context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions;
+            if(names!=null)for(String name:names)if("android.permission.ACCESS_LOCAL_NETWORK".equals(name))return true;
+        }catch(android.content.pm.PackageManager.NameNotFoundException ignored){}return false;
+    }
+    static void requestLocalNetwork(android.app.Activity activity){activity.requestPermissions(new String[]{"android.permission.ACCESS_LOCAL_NETWORK"},0x4643);}
     static String readPermission(Context context) {
         String permission=android.os.Build.VERSION.SDK_INT>=33?"android.permission.READ_MEDIA_VIDEO":android.Manifest.permission.READ_EXTERNAL_STORAGE;
         try {String[] declared=context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions;

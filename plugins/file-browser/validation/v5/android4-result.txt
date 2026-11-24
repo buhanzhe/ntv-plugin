@@ -1,0 +1,160 @@
+PASS delivered JAR SHA-256 16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19
+
+PASS Android 4.0.4 / API 15
+
+PASS directory loads: 资料库  /  本机存储 / 2 项 · 方向键选择，确定打开
+
+PASS modern directory picker hidden on old Android
+
+PASS directory loads: 资料库  /  本机存储 / 2 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  本机存储  ·  /mnt/sdcard / 19 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  Android  ·  /mnt/sdcard/Android / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  data  ·  /mnt/sdcard/Android/data / 16 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  xiao.bu.filebrowserprobe  ·  /mnt/sdcard/Android/data/xiao.bu.filebrowserprobe / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  files  ·  /mnt/sdcard/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local video filtering and subdirectory (text file hidden)
+
+PASS directory loads: 资料库  /  files  ·  /mnt/sdcard/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local reuses web-TV playback controls
+
+PASS local decoded dimensions 640x360
+
+PASS local clock advances 0 -> 2083
+
+CAPTURE local
+
+PASS local remote pause
+
+PASS local remote resume
+
+PASS local remote seek +10s
+
+PASS local background pause
+
+PASS local foreground resume
+
+PASS local return releases player
+
+PASS SMB connection form accepted
+
+PASS directory loads: smb://FIXTURE_HOST:39628/videos/ / 1 项 · 确定打开，返回上一级
+
+PASS directory loads: smb://FIXTURE_HOST:39628/videos/ / 1 项 · 确定打开，返回上一级
+
+PASS smb reuses web-TV playback controls
+
+PASS smb decoded dimensions 640x360
+
+PASS smb clock advances 0 -> 2208
+
+CAPTURE smb
+
+PASS smb remote pause
+
+PASS smb remote resume
+
+PASS smb remote seek +10s
+
+PASS smb background pause
+
+PASS smb foreground resume
+
+PASS SMB return releases player and proxy
+
+PASS SMB proxy port closed
+
+PASS directory loads: smb://FIXTURE_HOST:39628/videos/ / 1 项 · 确定打开，返回上一级
+
+PASS SMB password not persisted
+
+PASS delivered JAR loaded through DexClassLoader
+
+PASS delivered JAR SHA-256 16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19
+
+PASS Android 4.0.4 / API 15
+
+PASS directory loads: 资料库  /  本机存储 / 2 项 · 方向键选择，确定打开
+
+PASS modern directory picker hidden on old Android
+
+PASS directory loads: 资料库  /  本机存储 / 2 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  本机存储  ·  /mnt/sdcard / 19 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  Android  ·  /mnt/sdcard/Android / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  data  ·  /mnt/sdcard/Android/data / 16 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  xiao.bu.filebrowserprobe  ·  /mnt/sdcard/Android/data/xiao.bu.filebrowserprobe / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  files  ·  /mnt/sdcard/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local video filtering and subdirectory (text file hidden)
+
+PASS directory loads: 资料库  /  files  ·  /mnt/sdcard/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local reuses web-TV playback controls
+
+PASS local decoded dimensions 640x360
+
+PASS local clock advances 0 -> 2083
+
+CAPTURE local
+
+PASS local remote pause
+
+PASS local remote resume
+
+PASS local remote seek +10s
+
+PASS local background pause
+
+PASS local foreground resume
+
+PASS local return releases player
+
+PASS SMB connection form accepted
+
+PASS directory loads: smb://FIXTURE_HOST:39628/videos/ / 1 项 · 确定打开，返回上一级
+
+PASS directory loads: smb://FIXTURE_HOST:39628/videos/ / 1 项 · 确定打开，返回上一级
+
+PASS smb reuses web-TV playback controls
+
+PASS smb decoded dimensions 640x360
+
+PASS smb clock advances 0 -> 2208
+
+CAPTURE smb
+
+PASS smb remote pause
+
+PASS smb remote resume
+
+PASS smb remote seek +10s
+
+PASS smb background pause
+
+PASS smb foreground resume
+
+PASS SMB return releases player and proxy
+
+PASS SMB proxy port closed
+
+PASS directory loads: smb://FIXTURE_HOST:39628/videos/ / 1 项 · 确定打开，返回上一级
+
+PASS SMB password not persisted
+
+PASS delivered JAR loaded through DexClassLoader
+
+FILE_BROWSER_RESULT=PASS
+
+
+

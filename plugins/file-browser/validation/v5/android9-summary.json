@@ -1,0 +1,10 @@
+{
+  "sdk": 28,
+  "plugin_sha256": "16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19",
+  "phases": [
+    "grant",
+    "restore"
+  ],
+  "result": "PASS",
+  "limitation": "Runtime dialog not exercised; install-granted ROM, AppOps/settings and SAF paths tested"
+}

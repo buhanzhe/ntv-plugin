@@ -50,6 +50,9 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     private boolean disposed, resume;
     private boolean storagePermissionPending;
     private boolean storagePermissionNeeded;
+    private boolean networkPermissionPending;
+    private Runnable networkRetry;
+    private int networkRequestId;
     private interface Task { List<BrowserEntry> run() throws Exception; }
 
     public View create(Context context, ClassLoader resources, JSONObject config, Host host) {
@@ -74,8 +77,9 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
                 }
                 return super.dispatchKeyEvent(event);
             }
-            public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)resumeStorageAccess();}
+            public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused){resumeStorageAccess();resumeNetworkAccess();}}
         };
+        if(Build.VERSION.SDK_INT>=35)root.setFitsSystemWindows(true);
         browser = column();browser.setPadding(dp(12),0,0,0);libraryShell=withSidebar(browser,0,true);root.addView(libraryShell);
         LinearLayout heading = new LinearLayout(context); heading.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titles = column(); titles.addView(label("媒体库",25));
@@ -160,7 +164,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         storagePermissionNeeded = true;
         if (pending != null) pending.cancel(true);
         entries.clear(); changed();
-        status.setText("请允许读取本机视频；也可使用“选择目录”授权访问");
+        status.setText(ModernStorage.readPermission(context)==null?"请打开“文件授权”并选择目录，授权读取视频文件夹":"请允许读取本机视频；也可使用“选择目录”授权访问");
         if(accessButton!=null)accessButton.requestFocus();
         if (!storagePermissionPending && context instanceof android.app.Activity&&ModernStorage.readPermission(context)!=null
                 && !ModernStorage.runtimeReadGranted(context)) {
@@ -194,6 +198,31 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         storagePermissionNeeded=storagePermissionPending=false;
         if(current!=null&&current.kind==0)navigate(current,false);else if(current==null)home();
     }
+    private void resumeNetworkAccess(){
+        if(disposed||!foreground||networkRetry==null||Build.VERSION.SDK_INT<37||!ModernStorage.localNetworkGranted(context))return;
+        Runnable retry=networkRetry;networkRetry=null;networkPermissionPending=false;networkRequestId++;retry.run();
+    }
+    private boolean ensureNetworkPermission(Runnable retry){
+        if(Build.VERSION.SDK_INT<37||!ModernStorage.needsLocalNetwork(context)||ModernStorage.localNetworkGranted(context))return true;
+        status.setText("请允许局域网访问，再扫描或连接 SMB");networkRetry=retry;
+        if(!ModernStorage.declaresLocalNetwork(context)){status.setText("请更新网页电视，并在应用权限中允许局域网访问");return false;}
+        if(!networkPermissionPending&&context instanceof android.app.Activity){
+            networkPermissionPending=true;final int request=++networkRequestId;final long deadline=SystemClock.uptimeMillis()+30000;
+            ModernStorage.requestLocalNetwork((android.app.Activity)context);
+            main.postDelayed(new Runnable(){boolean dialogSeen;
+                public void run(){
+                    if(disposed||!networkPermissionPending||request!=networkRequestId)return;
+                    if(ModernStorage.localNetworkGranted(context)){resumeNetworkAccess();return;}
+                    if(!root.hasWindowFocus())dialogSeen=true;
+                    if(SystemClock.uptimeMillis()>=deadline||dialogSeen&&root.hasWindowFocus()){
+                        networkPermissionPending=false;status.setText("未允许局域网访问；可在“文件授权”或应用权限设置中重试");return;
+                    }
+                    main.postDelayed(this,500);
+                }
+            },500);
+        }
+        return false;
+    }
     private void chooseTree(){
         if(Build.VERSION.SDK_INT<21)return;
         final int tab=storageTab;closeAccess();
@@ -209,8 +238,9 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         FileUi.Surface panel=new FileUi.Surface(context);accessShell=panel;
         LinearLayout content=column();content.setPadding(dp(24),dp(12),dp(24),dp(12));content.addView(label("文件授权",24));
         content.addView(label("允许读取本机视频，或选择一个文件夹。授权目录会保留在对应存储页。",12));
-        button(content,"允许读取视频",()->{closeAccess();if(Build.VERSION.SDK_INT<23||ModernStorage.canReadSharedStorage(context)){if(current!=null)navigate(current,false);else home();}else ensureStoragePermission();});
+        if(Build.VERSION.SDK_INT<23||ModernStorage.readPermission(context)!=null)button(content,"允许读取视频",()->{closeAccess();if(Build.VERSION.SDK_INT<23||ModernStorage.canReadSharedStorage(context)){if(current!=null)navigate(current,false);else home();}else ensureStoragePermission();});
         if(Build.VERSION.SDK_INT>=21)button(content,"选择目录",()->chooseTree());
+        if(Build.VERSION.SDK_INT>=37&&ModernStorage.needsLocalNetwork(context))button(content,"允许局域网访问",()->{closeAccess();if(ensureNetworkPermission(()->discover()))discover();});
         button(content,"应用权限设置",()->{try{storagePermissionNeeded=true;closeAccess();context.startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+context.getPackageName())));}catch(android.content.ActivityNotFoundException error){status.setText("设备未提供应用权限设置，请从电视设置中允许文件读取");}});
         if(Build.VERSION.SDK_INT>=21)button(content,"已授权目录",()->{closeAccess();stack.clear();selections.clear();current=null;path.setText("资料库 / 已授权目录");load(()->ModernStorage.savedTrees(context,-1));});
         button(content,"返回",()->closeAccess());
@@ -235,6 +265,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     }
     private void changed() { ((ArrayAdapter<?>)list.getAdapter()).notifyDataSetChanged(); }
     private void discover() {
+        if(!ensureNetworkPermission(()->discover()))return;
         closeDiscovery();
         discovery = column(); final LinearLayout page = discovery;
         page.setPadding(dp(12),0,0,0);page.addView(label("网络共享",25));
@@ -287,6 +318,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         EditText domain = field("域（可留空）", automatic ? "" : prefs.getString("domain", ""), false);
         TextView connectionStatus = label(automatic ? "正在尝试免密访问…" : "免密共享只需填写地址，账号和密码留空", 11); form.addView(connectionStatus);
         button(form, "连接", () -> {
+            if(!ensureNetworkPermission(()->{if(form!=null){Button connect=null;for(int i=0;i<form.getChildCount();i++){View child=form.getChildAt(i);if(child instanceof Button&&"连接".contentEquals(((Button)child).getText()))connect=(Button)child;}if(connect!=null)connect.performClick();}})){connectionStatus.setText("请允许局域网访问；若仍受限，请更新网页电视或从应用权限设置中重试");return;}
             final String url = address.getText().toString().trim(), username = user.getText().toString().trim(),
                     secret = password.getText().toString(), realm = domain.getText().toString().trim();
             // BaseContext can resolve local/NetBIOS addresses during initialization.
@@ -334,7 +366,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
         input.setInputType(InputType.TYPE_CLASS_TEXT | (password ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS));
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,dp(40));params.bottomMargin=dp(9);form.addView(input,params); return input;
     }
-    private void closeForm() { generation++; if (pending != null) pending.cancel(true); View modal = root.findViewWithTag("connection"); if (modal != null) root.removeView(modal); form = null;libraryShell.setVisibility(View.VISIBLE); list.requestFocus(); }
+    private void closeForm() { networkRetry=null;networkPermissionPending=false;networkRequestId++;generation++; if (pending != null) pending.cancel(true); View modal = root.findViewWithTag("connection"); if (modal != null) root.removeView(modal); form = null;libraryShell.setVisibility(View.VISIBLE); list.requestFocus(); }
     private void playSmb(BrowserEntry entry) {
         playbackTitle=entry.name;
         try { stopVideo(); proxy = new MediaProxy(smb.source(entry.location)); startVideo(Uri.parse(proxy.url())); }
@@ -390,7 +422,7 @@ public final class FileBrowserPlugin implements ChannelPlugin, ChannelPlugin.Nat
     }
     public void setActive(boolean active) {
         foreground=active;
-        if(active)resumeStorageAccess();
+        if(active){resumeStorageAccess();resumeNetworkAccess();}
         if (video != null) {
             if (!active) { resume = video.isPlaying(); video.pause();if(controller!=null)controller.hide(); }
             else if (resume) { video.start(); resume = false; }

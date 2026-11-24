@@ -26,6 +26,8 @@ public class Probe extends Instrumentation {
     });}
     void observeVideo(View view){if(view instanceof VideoView&&Build.VERSION.SDK_INT>=17){rendered=false;observedPlayer=null;((VideoView)view).setOnInfoListener((player,what,extra)->{observedPlayer=player;if(what==3)rendered=true;return false;});}
         if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)observeVideo(group.getChildAt(i));}}
+    InputStream pluginInput()throws IOException{return Boolean.parseBoolean(args.getString("externalJar"))?new FileInputStream(new File(activity.getFilesDir(),"plugin-under-test.jar")):activity.getAssets().open("file-browser.jar");}
+    void verifyJar(File jar)throws Exception{String expected=args.getString("expectedHash");if(expected==null)return;java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(jar)){byte[] buffer=new byte[32768];int n;while((n=in.read(buffer))!=-1)digest.update(buffer,0,n);}StringBuilder hex=new StringBuilder();for(byte b:digest.digest())hex.append(String.format(java.util.Locale.US,"%02x",b&255));check(expected.equals(hex.toString()),"delivered JAR SHA-256 "+hex);}
     final ComponentName cpuOverlay=new ComponentName("com.android.systemui","com.android.systemui.LoadAverageService");
     interface Read { boolean ready() throws Exception; }
     public void onCreate(Bundle arguments) { args=arguments; super.onCreate(arguments); start(); }
@@ -42,7 +44,7 @@ public class Probe extends Instrumentation {
     void click(String title) { ui(()->{Button b=button(root,title);if(b==null)throw new AssertionError("Missing button "+title);b.performClick();}); }
     GridView list()throws Exception{return (GridView)field(plugin,"list");}
     String message()throws Exception{return ((TextView)field(plugin,"status")).getText().toString();}
-    void loaded()throws Exception { waitFor("directory loaded",()->!message().contains("正在读取"));check(!message().contains("失败"),"directory loads: "+((TextView)field(plugin,"path")).getText()+" / "+message()); }
+    void loaded()throws Exception {final String[] state={"",""};waitFor("directory loaded",()->{ui(()->{try{state[0]=message();state[1]=((TextView)field(plugin,"path")).getText().toString();}catch(Exception e){throw new RuntimeException(e);}});return !state[0].contains("正在读取");});check(!state[0].contains("失败"),"directory loads: "+state[1]+" / "+state[0]);}
     void row(String title)throws Exception {
         loaded(); final GridView list=list(); final int[] index={-1};
         ui(()->{for(int i=0;i<list.getCount();i++)if(list.getAdapter().getItem(i).toString().toLowerCase(java.util.Locale.US).endsWith(title.toLowerCase(java.util.Locale.US))){index[0]=i;break;}
@@ -95,12 +97,12 @@ public class Probe extends Instrumentation {
     }
     public void onStart(){int result=Activity.RESULT_CANCELED;
         try {
-            activity=startActivitySync(new Intent(getTargetContext(),ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            activity=startActivitySync(new Intent(getTargetContext(),ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));log("ACTIVITY_READY");if(Build.VERSION.SDK_INT>=29){if(!activity.hasWindowFocus())log("WAIT_FOREGROUND");waitFor("probe activity foreground",()->activity.hasWindowFocus());}
             try{cpuOverlayPaused=activity.stopService(new Intent().setComponent(cpuOverlay));}catch(SecurityException ignored){}
             File jar=new File(activity.getFilesDir(),"file-browser.jar");
             if(jar.exists()&&!jar.delete())throw new IOException("Cannot replace probe-owned JAR");
-            try(InputStream in=activity.getAssets().open("file-browser.jar");OutputStream out=new FileOutputStream(jar)){byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}
-            jar.setReadOnly();File dex=activity.getDir("dex",0);loader=new DexClassLoader(jar.getPath(),dex.getPath(),null,getClass().getClassLoader());
+            try(InputStream in=pluginInput();OutputStream out=new FileOutputStream(jar)){byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}
+            jar.setReadOnly();verifyJar(jar);File dex=activity.getDir("dex",0);loader=new DexClassLoader(jar.getPath(),dex.getPath(),null,getClass().getClassLoader());
             plugin=(ChannelPlugin)loader.loadClass("xiao.bu.channel.files.FileBrowserPlugin").newInstance();
             ui(()->{try{root=plugin.create(activity,loader,new JSONObject(),new ChannelPlugin.DirectoryHost(){
                 public void play(String url){}public void status(String text){}public void configureBrowser(android.webkit.WebView web){}

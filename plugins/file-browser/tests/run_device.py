@@ -1,5 +1,6 @@
 """Exercise the delivered plugin on an explicitly selected KitKat device. Requires Impacket 0.12.0."""
 import argparse
+from device_artifact import stage
 import datetime
 import hashlib
 import json
@@ -55,11 +56,14 @@ threading.Thread(target=server.start,daemon=True).start()
 package='xiao.bu.filebrowserprobe'
 remote='/sdcard/Android/data/'+package+'/files'
 run('shell','mkdir','-p',remote+'/subfolder')
+jar=ROOT/'plugins/file-browser/dist/file-browser.jar'
+jar_hash=hashlib.sha256(jar.read_bytes()).hexdigest()
+external=stage(adb,jar)
 run('push',str(video),remote+'/sample.mp4',stdout=subprocess.DEVNULL)
 (fixture/'hidden.txt').write_text('video filter fixture')
 run('push',str(fixture/'hidden.txt'),remote+'/hidden.txt',stdout=subprocess.DEVNULL)
 run('shell','input','keyevent','224')
-command=['shell','am','instrument','-w','-e','smb',f'smb://{args.host}:{port}/videos/','-e','scanHost',args.host,'-e','skipScan',str(args.skip_scan).lower(),'-e','guest','true' if args.guest else 'false','-e','screenshots','true' if args.screenshots else 'false','-e','perf','true' if args.perf else 'false',package+'/'+package+'.Probe']
+command=['shell','am','instrument','-w','-e','externalJar',external,'-e','expectedHash',jar_hash,'-e','smb',f'smb://{args.host}:{port}/videos/','-e','scanHost',args.host,'-e','skipScan',str(args.skip_scan).lower(),'-e','guest','true' if args.guest else 'false','-e','screenshots','true' if args.screenshots else 'false','-e','perf','true' if args.perf else 'false',package+'/'+package+'.Probe']
 process=subprocess.Popen(adb+command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
 lines=[];first_frame=None;captured=set()
 def collect():

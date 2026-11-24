@@ -21,10 +21,12 @@ public final class SmbProbe extends Probe {
             if(!automatic){LinearLayout form=(LinearLayout)field(plugin,"form");ArrayList<EditText> inputs=new ArrayList<>();
                 for(int i=0;i<form.getChildCount();i++)if(form.getChildAt(i) instanceof EditText)inputs.add((EditText)form.getChildAt(i));
                 inputs.get(0).setText(address);inputs.get(1).setText(user);inputs.get(2).setText(password);inputs.get(3).setText("WORKGROUP");
-                Button submit=button(form,"连接");submit.requestFocus();
+                ((android.view.inputmethod.InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0);Button submit=button(form,"连接");if(!submit.requestFocusFromTouch())throw new AssertionError("Connect button focus");
             }
         }catch(Exception error){throw new RuntimeException(error);}});
-        if(!automatic){waitForIdleSync();sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);}
+        if(!automatic){waitForIdleSync();Thread.sleep(150);sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);}
+        if(Build.VERSION.SDK_INT>=37&&activity.getApplicationInfo().targetSdkVersion>=37&&activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")!=0){if(Boolean.parseBoolean(args.getString("denyNetwork"))){boolean denied=SystemUi.pressUnless(this,()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0,"com.android.permissioncontroller:id/permission_deny_button");if(denied){waitFor("network denial return",()->!((Boolean)field(plugin,"networkPermissionPending")));check(field(plugin,"smb")==null&&field(plugin,"form")!=null,"denied local network permission keeps recoverable form");ui(()->button(root,"连接").requestFocusFromTouch());waitForIdleSync();sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);}}
+            SystemUi.pressUnless(this,()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0,"com.android.permissioncontroller:id/permission_allow_button");waitFor("local network permission",()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0);check(true,"plugin requested native local network permission");}
     }
     void connected()throws Exception{waitFor("SMB connection",()->{if(message().contains("失败"))throw new AssertionError(message());return field(plugin,"form")==null;});loaded();}
     void range(String url)throws Exception{
@@ -36,9 +38,9 @@ public final class SmbProbe extends Probe {
     }
     @Override public void onStart(){int result=Activity.RESULT_CANCELED;
         try{
-            activity=startActivitySync(new Intent(getTargetContext(),ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            activity=startActivitySync(new Intent(getTargetContext(),ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));log("ACTIVITY_READY");if(Build.VERSION.SDK_INT>=29){if(!activity.hasWindowFocus())log("WAIT_FOREGROUND");waitFor("probe activity foreground",()->activity.hasWindowFocus());}
             File jar=new File(activity.getFilesDir(),"file-browser.jar");if(jar.exists())jar.delete();
-            try(InputStream in=activity.getAssets().open("file-browser.jar");OutputStream out=new FileOutputStream(jar)){byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}jar.setReadOnly();
+            try(InputStream in=pluginInput();OutputStream out=new FileOutputStream(jar)){byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}jar.setReadOnly();verifyJar(jar);
             loader=new DexClassLoader(jar.getPath(),activity.getDir("dex",0).getPath(),null,getClass().getClassLoader());plugin=(ChannelPlugin)loader.loadClass("xiao.bu.channel.files.FileBrowserPlugin").newInstance();
             ui(()->{try{root=plugin.create(activity,loader,new JSONObject(),new ChannelPlugin.DirectoryHost(){public void play(String u){}public void status(String t){}public void configureBrowser(android.webkit.WebView v){}public void chooseFiles(android.webkit.ValueCallback<Uri[]> c,String t,boolean m){c.onReceiveValue(null);}public void chooseDirectory(android.webkit.ValueCallback<Uri[]> c){c.onReceiveValue(null);}});activity.setContentView(root);watchVideoCreation();}catch(Exception e){throw new RuntimeException(e);}});
             loaded();String address=args.getString("smb"),user=args.getString("user","");boolean negative=Boolean.parseBoolean(args.getString("negative"));

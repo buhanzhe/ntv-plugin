@@ -1,6 +1,7 @@
 """Build a debug-signed isolated test APK. No changes to installed nTv packages."""
 from pathlib import Path
 import os
+import shutil
 import argparse
 import subprocess
 import zipfile
@@ -20,13 +21,18 @@ manifest.write_text('''<manifest xmlns:android="http://schemas.android.com/apk/r
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-<application android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Holo.NoActionBar" android:label="File browser probe">
+LOCAL_PERMISSION
+<application android:debuggable="true" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Holo.NoActionBar" android:label="File browser probe">
 <activity android:name=".ProbeActivity" android:screenOrientation="landscape" android:exported="true"/></application>
 <instrumentation android:name=".Probe" android:targetPackage="xiao.bu.filebrowserprobe"/>
 <instrumentation android:name=".SmbProbe" android:targetPackage="xiao.bu.filebrowserprobe"/>
 <instrumentation android:name=".StorageProbe" android:targetPackage="xiao.bu.filebrowserprobe"/>
-</manifest>'''.replace('TARGET_SDK',str(args.target_sdk)),encoding='utf-8')
-classes=OUT/'classes';classes.mkdir(exist_ok=True)
+</manifest>'''.replace('TARGET_SDK',str(args.target_sdk)).replace('LOCAL_PERMISSION','<uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>' if args.target_sdk>=37 else ''),encoding='utf-8')
+classes=OUT/'classes'
+if classes.exists():
+    assert classes.resolve().parent==OUT.resolve() and OUT.resolve().is_relative_to(ROOT.resolve())
+    shutil.rmtree(classes)
+classes.mkdir()
 subprocess.run([str(JAVA/'javac.exe'),'-source','8','-target','8','-encoding','UTF-8','-cp',str(ANDROID),'-d',str(classes),
     str(ROOT/'host-api/src/xiao/bu/tv/jar/ChannelPlugin.java'),*map(str,Path(__file__).with_name('device').glob('*.java'))],check=True)
 code=OUT/'code.jar'

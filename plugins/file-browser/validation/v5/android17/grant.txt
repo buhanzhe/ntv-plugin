@@ -1,0 +1,124 @@
+PASS delivered JAR SHA-256 16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19
+PASS Android 17 / API 37
+PASS directory loads: 资料库  /  本机存储 / 5 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS directory loads: 资料库  /  本机存储 / 5 项 · 方向键选择，确定打开
+PASS system control activated with D-pad
+PASS denial does not expose files
+PASS authorization panel owns focus
+CAPTURE access
+APP_CAPTURE access
+PASS system control activated with D-pad
+PASS grant automatically resumes browsing
+PASS directory loads: 资料库  /  本机存储  ·  /storage/emulated/0 / 35 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  Movies  ·  /storage/emulated/0/Movies / 22 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  ntv-file-browser-test-55b3e9904b50  ·  /storage/emulated/0/Movies/ntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  ntv-file-browser-test-55b3e9904b50  ·  /storage/emulated/0/Movies/ntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS local reuses web-TV playback controls
+PASS local decoded dimensions 640x360
+PASS local clock advances 147 -> 2354
+PASS local native renderer reported first frame
+CAPTURE local
+PASS local remote pause
+PASS local remote resume
+PASS local remote seek +10s
+PASS local background pause
+PASS local foreground resume
+PASS directory loads: 资料库  /  ntv-file-browser-test-55b3e9904b50  ·  /storage/emulated/0/Movies/ntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS local return releases player
+PASS authorization panel owns focus
+CAPTURE access
+APP_CAPTURE access
+PASS system control activated with D-pad
+PASS system control activated with D-pad
+CAPTURE authorized
+APP_CAPTURE directory
+PASS directory read permission persisted by system
+PASS authorized directory remembered
+TRACE before child stack=[] access=false form=false scan=false
+PASS directory loads: 资料库 / 已授权目录 / 2 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  subfolder  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50/document/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50%2Fsubfolder / 此目录没有视频或子文件夹
+TRACE child stack=[[文件夹]  授权目录] access=false form=false scan=false
+PASS directory loads: 资料库  /  授权目录  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+TRACE after back stack=[] access=false form=false scan=false
+PASS back restores parent directory
+PASS back restores selected card
+PASS left edge enters sidebar
+PASS right returns to grid
+PASS directory loads: 资料库  /  授权目录  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS saf reuses web-TV playback controls
+PASS saf decoded dimensions 640x360
+PASS saf clock advances 152 -> 2353
+PASS saf native renderer reported first frame
+CAPTURE saf
+PASS saf remote pause
+PASS saf remote resume
+PASS saf remote seek +10s
+PASS saf background pause
+PASS saf foreground resume
+PASS MENU focuses player controls
+PASS OK activates focused playback button
+PASS back releases selected video
+PASS delivered JAR SHA-256 16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19
+PASS Android 17 / API 37
+PASS directory loads: 资料库  /  本机存储 / 5 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS directory loads: 资料库  /  本机存储 / 5 项 · 方向键选择，确定打开
+PASS system control activated with D-pad
+PASS denial does not expose files
+PASS authorization panel owns focus
+CAPTURE access
+APP_CAPTURE access
+PASS system control activated with D-pad
+PASS grant automatically resumes browsing
+PASS directory loads: 资料库  /  本机存储  ·  /storage/emulated/0 / 35 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  Movies  ·  /storage/emulated/0/Movies / 22 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  ntv-file-browser-test-55b3e9904b50  ·  /storage/emulated/0/Movies/ntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  ntv-file-browser-test-55b3e9904b50  ·  /storage/emulated/0/Movies/ntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS local reuses web-TV playback controls
+PASS local decoded dimensions 640x360
+PASS local clock advances 147 -> 2354
+PASS local native renderer reported first frame
+CAPTURE local
+PASS local remote pause
+PASS local remote resume
+PASS local remote seek +10s
+PASS local background pause
+PASS local foreground resume
+PASS directory loads: 资料库  /  ntv-file-browser-test-55b3e9904b50  ·  /storage/emulated/0/Movies/ntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS local return releases player
+PASS authorization panel owns focus
+CAPTURE access
+APP_CAPTURE access
+PASS system control activated with D-pad
+PASS system control activated with D-pad
+CAPTURE authorized
+APP_CAPTURE directory
+PASS directory read permission persisted by system
+PASS authorized directory remembered
+TRACE before child stack=[] access=false form=false scan=false
+PASS directory loads: 资料库 / 已授权目录 / 2 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  subfolder  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50/document/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50%2Fsubfolder / 此目录没有视频或子文件夹
+TRACE child stack=[[文件夹]  授权目录] access=false form=false scan=false
+PASS directory loads: 资料库  /  授权目录  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+TRACE after back stack=[] access=false form=false scan=false
+PASS back restores parent directory
+PASS back restores selected card
+PASS left edge enters sidebar
+PASS right returns to grid
+PASS directory loads: 资料库  /  授权目录  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-55b3e9904b50 / 2 项 · 方向键选择，确定打开
+PASS saf reuses web-TV playback controls
+PASS saf decoded dimensions 640x360
+PASS saf clock advances 152 -> 2353
+PASS saf native renderer reported first frame
+CAPTURE saf
+PASS saf remote pause
+PASS saf remote resume
+PASS saf remote seek +10s
+PASS saf background pause
+PASS saf foreground resume
+PASS MENU focuses player controls
+PASS OK activates focused playback button
+PASS back releases selected video
+STORAGE_RESULT=PASS
+
