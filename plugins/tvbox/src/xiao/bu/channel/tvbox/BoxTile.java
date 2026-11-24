@@ -12,6 +12,7 @@ import android.widget.TextView;
 
 /** Landscape captions sit on artwork; poster metadata sits below. */
 final class BoxTile extends LinearLayout {
+    static int landscapeHeight(BoxUi ui,int width){return Math.max(1,width-2*ui.px(4))*5/8+ui.px(4)+ui.px(8);}
     private final ImageView cover;
     private final FrameLayout artwork;
     private final TextView title, subtitle, caption;
