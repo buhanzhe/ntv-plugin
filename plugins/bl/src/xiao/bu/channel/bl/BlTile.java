@@ -23,7 +23,7 @@ public class BlTile extends LinearLayout {
         setBackgroundDrawable(ui.focus(0));
         setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
         image = new FrameLayout(ui.context);
-        cover = new ImageView(ui.context);
+        cover = ui.imageView();
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         image.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         badge = ui.text("", 14, BlUi.TEXT);

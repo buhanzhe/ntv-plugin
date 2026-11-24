@@ -149,13 +149,23 @@ final class BoxDashPlayer extends FrameLayout {
         int key = event.getKeyCode();
         if (key != KeyEvent.KEYCODE_DPAD_CENTER && key != KeyEvent.KEYCODE_ENTER
                 && key != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && key != KeyEvent.KEYCODE_DPAD_LEFT
-                && key != KeyEvent.KEYCODE_DPAD_RIGHT) return super.dispatchKeyEvent(event);
-        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                && key != KeyEvent.KEYCODE_DPAD_RIGHT && key != KeyEvent.KEYCODE_MEDIA_REWIND
+                && key != KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) return super.dispatchKeyEvent(event);
+        if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT
+                || key == KeyEvent.KEYCODE_MEDIA_REWIND || key == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+            try { if (controls.remoteKey(event)) return true; }
+            catch (LinkageError olderHost) { /* The optional remote HUD API is absent on older hosts. */ }
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
                 long duration = player.getDuration();
+                boolean backward = key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_MEDIA_REWIND;
                 if (duration > 0) player.seekTo(Math.max(0, Math.min(duration - 1,
-                        player.getCurrentPosition() + (key == KeyEvent.KEYCODE_DPAD_LEFT ? -10000 : 10000))));
-            } else if (controls.visible() || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) toggle();
+                        player.getCurrentPosition() + (backward ? -5000 : 5000))));
+                controls.show();
+            }
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            if (controls.visible() || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) toggle();
             controls.show();
         }
         return true;

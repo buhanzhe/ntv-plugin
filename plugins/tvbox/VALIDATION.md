@@ -1,3 +1,5 @@
+本次蓝色布局、Android 4.4 真机及遥控器回归见 [布局与遥控器记录](VALIDATION-UI.md)。
+
 TVBox v7 的加载缓存、多站聚搜、易听王力宏及左侧点击回归见 [2026-11-24 测试记录](VALIDATION-SEARCH.md)。
 
 # TVBox v6 设备验证（2026-11-23）

@@ -14,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -150,7 +152,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private final Map<Tab, Button> navigation = new EnumMap<>(Tab.class);
     private final ArrayDeque<Screen> history = new ArrayDeque<>();
     private final Map<String, JSONObject> selectedFilters = new HashMap<>();
-    private BlUi ui;
+    private BoxUi ui;
     private BoxArt art;
     private Context context;
     private VodHost host;
@@ -177,7 +179,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (!(base instanceof VodHost)) throw new IOException("请更新 nTv 以运行 TVBox");
         host = (VodHost) base;
         this.context = context;
-        ui = new BlUi(context);
+        ui = new BoxUi(context);
         http = new BoxHttp((OkHttpClient) host.httpClient());
         source = new BoxSource(context, host, assets, http);
         art = new BoxArt(http);
@@ -192,19 +194,34 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             }
         };
         root.setOrientation(LinearLayout.HORIZONTAL);
-        root.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xff302733, 0xff201c24}));
-        root.addView(sidebar(), new LinearLayout.LayoutParams(ui.px(108), -1));
+        root.setBaselineAligned(false);
+        root.setBackgroundDrawable(ui.backdrop());
+        root.setPadding(ui.px(18), ui.px(18), ui.px(12), ui.px(18));
+        boolean compact = context.getResources().getDisplayMetrics().widthPixels < ui.px(960);
+        root.addView(sidebar(), new LinearLayout.LayoutParams(ui.px(compact ? 138 : 184), -1));
         LinearLayout page = ui.vertical();
-        page.setPadding(ui.px(22), ui.px(16), ui.px(22), ui.px(12));
+        page.setPadding(ui.px(26), ui.px(4), ui.px(16), 0);
         root.addView(page, new LinearLayout.LayoutParams(0, -1, 1));
         LinearLayout header = ui.horizontal();
         heading = ui.title("");
+        heading.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.px(30));
         heading.setSingleLine(true);
         heading.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(heading, new LinearLayout.LayoutParams(0, ui.px(50), 1));
         actions = ui.horizontal();
         header.addView(actions, new LinearLayout.LayoutParams(-2, -2));
+        TextView clock = ui.text("", 22, BoxUi.TEXT);
+        clock.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        clock.setPadding(ui.px(12), 0, 0, 0);
+        header.addView(clock, new LinearLayout.LayoutParams(ui.px(88), ui.px(50)));
+        Runnable updateClock = new Runnable() {
+            public void run() {
+                if (disposed) return;
+                clock.setText(android.text.format.DateFormat.format("HH:mm", new java.util.Date()));
+                main.postDelayed(this, 30000);
+            }
+        };
+        updateClock.run();
         page.addView(header);
         status = ui.text("", 16, BlUi.SUB);
         status.setMaxLines(2);
@@ -212,11 +229,15 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         page.addView(status);
         body = ui.vertical();
         page.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        TextView hints = ui.text("方向键  选择       OK  打开       返回  上一级", 14, BoxUi.SUB);
+        hints.setGravity(Gravity.CENTER);
+        page.addView(hints, new LinearLayout.LayoutParams(-1, ui.px(30)));
 
         configUrl = config.optString("url");
         show(configScreen(), false);
         if (!configUrl.isEmpty()) openRepository(configUrl, true);
         container = new FrameLayout(context);
+        container.setBackgroundColor(0xff000000);
         container.addView(root, new FrameLayout.LayoutParams(-1, -1));
         sniffer = new BoxSniffer(context, container, http);
         source.setSniffer(sniffer);
@@ -240,29 +261,26 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private LinearLayout sidebar() {
         LinearLayout bar = ui.vertical();
-        bar.setPadding(ui.px(9), ui.px(14), ui.px(9), ui.px(12));
-        bar.setBackgroundColor(0x66201b23);
-        TextView brand = ui.title("TVBox");
-        brand.setTextColor(BlUi.ACCENT);
-        brand.setGravity(Gravity.CENTER);
-        bar.addView(brand, new LinearLayout.LayoutParams(-1, ui.px(56)));
+        bar.setPadding(ui.px(12), ui.px(18), ui.px(12), ui.px(14));
+        bar.setBackgroundDrawable(ui.glass(0x88455f85, 24));
         for (Tab tab : Tab.values()) {
             Button button = ui.button(tab.label);
             button.setAllCaps(false);
-            button.setPadding(ui.px(3), ui.px(5), ui.px(3), ui.px(5));
+            button.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+            button.setPadding(ui.px(14), ui.px(8), ui.px(8), ui.px(8));
             Drawable icon = context.getResources().getDrawable(tab.icon).mutate();
-            icon.setColorFilter(BlUi.TEXT, PorterDuff.Mode.SRC_IN);
+            icon.setColorFilter(BoxUi.TEXT, PorterDuff.Mode.SRC_IN);
             icon.setBounds(0, 0, ui.px(24), ui.px(24));
-            button.setCompoundDrawables(null, icon, null, null);
-            button.setCompoundDrawablePadding(ui.px(3));
+            button.setCompoundDrawables(icon, null, null, null);
+            button.setCompoundDrawablePadding(ui.px(12));
             button.setOnClickListener(view -> switchTab(tab));
             button.setOnKeyListener((view, code, event) -> {
                 if (code != KeyEvent.KEYCODE_DPAD_RIGHT || primary == null) return false;
                 if (event.getAction() == KeyEvent.ACTION_DOWN) primary.requestFocus();
                 return true;
             });
-            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, ui.px(66));
-            size.bottomMargin = ui.px(5);
+            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, ui.px(62));
+            size.bottomMargin = ui.px(10);
             if (tab == Tab.CONFIG) bar.addView(new View(context), new LinearLayout.LayoutParams(1, 0, 1));
             bar.addView(button, size);
             navigation.put(tab, button);
@@ -319,7 +337,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 }
                 homes.clear();
                 currentSite = null;
-                Screen next = new Screen(Tab.SITES, "TVBox 站点", true, () -> {
+                Screen next = new Screen(Tab.SITES, "站点", true, () -> {
                     List<Choice> choices = new ArrayList<>();
                     for (BoxSource.Repository repo : repos) {
                         choices.add(new Choice(repo.name, () -> openRepository(repo.url, false)));
@@ -734,31 +752,73 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             List<PlayLine> lines = playLines(site, video);
             int[] selected = {0};
             return () -> show(new Screen(from, title, false, () -> {
-                summary(video, image);
-                if (lines.isEmpty()) message("站点没有提供播放线路");
-                else episodePanel(lines, selected);
+                detailPage(video, image, lines, selected, MusicSearch.supports(site.api)
+                        || site.name.contains("音乐") || video.optString("vod_type").contains("音乐"));
             }), true);
         });
     }
 
-    private void summary(JSONObject video, String image) {
-        LinearLayout hero = ui.horizontal();
-        hero.setGravity(Gravity.TOP);
-        hero.setPadding(0, ui.px(16), 0, ui.px(14));
-        ImageView cover = new ImageView(context);
-        cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+    private void detailPage(JSONObject video, String image, List<PlayLine> lines, int[] selected, boolean music) {
+        LinearLayout about = ui.horizontal(), info = ui.vertical(), playback = ui.vertical();
+        ImageView cover = ui.imageView();
+        cover.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        cover.setBackgroundDrawable(ui.glass(0x55345678, 16));
+        cover.setVisibility(image.isEmpty() ? View.GONE : View.VISIBLE);
         art.load(cover, image);
-        hero.addView(cover, new LinearLayout.LayoutParams(ui.px(250), ui.px(141)));
-        ui.gap(hero, 24);
-        LinearLayout info = ui.vertical();
-        hero.addView(info, new LinearLayout.LayoutParams(0, ui.px(141), 1));
+        about.addView(cover, new LinearLayout.LayoutParams(ui.px(music ? 96 : 64), ui.px(96)));
+        about.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+        String artist = music && !lines.isEmpty() ? sharedArtist(lines.get(selected[0]).episodes) : "";
+        if (!artist.isEmpty()) info.addView(detailText(artist, 22, BlUi.TEXT, 2));
         String facts = metadata(video, "vod_year", "vod_area", "vod_class", "vod_remarks");
-        if (!facts.isEmpty()) info.addView(detailText(facts, 19, BlUi.TEXT, 1));
+        if (!facts.isEmpty()) info.addView(detailText(facts, 17, BlUi.TEXT, 2));
         String cast = metadata(video, "vod_director", "vod_actor");
-        if (!cast.isEmpty()) info.addView(detailText(cast, 16, BlUi.SUB, 1));
+        if (!cast.isEmpty()) info.addView(detailText(cast, 16, BlUi.SUB, 2));
         String synopsis = BlUi.plain(video.optString("vod_content")).trim();
-        if (!synopsis.isEmpty()) info.addView(detailText(synopsis, 17, BlUi.SUB, 4));
-        body.addView(hero);
+        TextView description = detailText(synopsis, 16, BlUi.SUB, 6);
+        if (!synopsis.isEmpty()) info.addView(description);
+        LinearLayout details = new LinearLayout(context) {
+            private int mode;
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                boolean wide = !image.isEmpty() && View.MeasureSpec.getSize(widthSpec) >= ui.px(840);
+                if (mode == (wide ? 1 : 2)) { super.onMeasure(widthSpec, heightSpec); return; }
+                mode = wide ? 1 : 2;
+                setOrientation(wide ? HORIZONTAL : VERTICAL);
+                about.setOrientation(wide ? VERTICAL : HORIZONTAL);
+                about.setGravity(Gravity.TOP);
+                about.setLayoutParams(new LinearLayout.LayoutParams(wide ? ui.px(220) : -1, wide ? -1 : -2));
+                cover.setLayoutParams(new LinearLayout.LayoutParams(ui.px(wide ? 220 : music ? 96 : 64),
+                        ui.px(wide ? music ? 220 : 300 : 96)));
+                LinearLayout.LayoutParams text = new LinearLayout.LayoutParams(wide ? -1 : 0, -2, wide ? 0 : 1);
+                text.topMargin = wide ? ui.px(16) : 0;
+                text.leftMargin = !wide && !image.isEmpty() ? ui.px(16) : 0;
+                info.setLayoutParams(text);
+                description.setMaxLines(wide ? 6 : 2);
+                LinearLayout.LayoutParams list = new LinearLayout.LayoutParams(wide ? 0 : -1, wide ? -1 : 0, 1);
+                list.leftMargin = wide ? ui.px(24) : 0;
+                list.topMargin = wide ? 0 : ui.px(12);
+                playback.setLayoutParams(list);
+                super.onMeasure(widthSpec, heightSpec);
+            }
+        };
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.setBaselineAligned(false);
+        details.setGravity(Gravity.TOP);
+        details.setPadding(0, ui.px(12), 0, 0);
+        details.addView(about, new LinearLayout.LayoutParams(-1, -2));
+        details.addView(playback, new LinearLayout.LayoutParams(-1, 0, 1));
+        body.addView(details, new LinearLayout.LayoutParams(-1, 0, 1));
+        if (lines.isEmpty()) message("站点没有提供播放线路");
+        else episodePanel(playback, lines, selected, music);
+    }
+
+    private static String sharedArtist(List<Choice> items) {
+        if (items.size() < 3) return "";
+        String first = items.get(0).title;
+        int separator = first.indexOf(" - ");
+        if (separator < 1 || separator > 40) return "";
+        String prefix = first.substring(0, separator + 3);
+        for (Choice item : items) if (!item.title.startsWith(prefix)) return "";
+        return first.substring(0, separator).trim();
     }
 
     private TextView detailText(String text, int size, int color, int lines) {
@@ -790,30 +850,95 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return lines;
     }
 
-    private void episodePanel(List<PlayLine> lines, int[] selected) {
-        LinearLayout channels = ui.horizontal();
-        LinearLayout panel = ui.vertical();
+    private void episodePanel(LinearLayout parent, List<PlayLine> lines, int[] selected, boolean music) {
+        LinearLayout header = ui.horizontal(), channels = ui.horizontal(), panel = ui.vertical();
         HorizontalScrollView scroll = new HorizontalScrollView(context);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.addView(channels);
-        body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
-        body.addView(panel, new LinearLayout.LayoutParams(-1, 0, 1));
+        scroll.setHorizontalScrollBarEnabled(false); scroll.addView(channels);
+        header.addView(scroll, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView count = ui.text("", 16, BlUi.SUB);
+        count.setPadding(ui.px(12), 0, ui.px(4), 0);
+        header.addView(count, new LinearLayout.LayoutParams(-2, -2));
+        parent.addView(header, new LinearLayout.LayoutParams(-1, ui.px(44)));
+        TextView fullTitle = ui.text("", 17, BlUi.SUB);
+        fullTitle.setSingleLine(true); fullTitle.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+        fullTitle.setMarqueeRepeatLimit(-1); fullTitle.setSelected(true);
+        parent.addView(fullTitle, new LinearLayout.LayoutParams(-1, ui.px(30)));
+        parent.addView(panel, new LinearLayout.LayoutParams(-1, 0, 1));
+        Runnable bind = () -> {
+            List<Choice> episodes = lines.get(selected[0]).episodes;
+            count.setText(episodes.size() + (music ? " 首" : " 集"));
+            panel.removeAllViews();
+            episodeChoices(panel, episodes, music, fullTitle);
+        };
         for (int i = 0; i < lines.size(); i++) {
             int index = i;
+            if (lines.size() == 1) {
+                TextView name = ui.text(lines.get(i).name, 19, BlUi.TEXT);
+                channels.addView(name, new LinearLayout.LayoutParams(-2, ui.px(44)));
+                continue;
+            }
             Button option = action(channels, lines.get(i).name, () -> {
                 if (pending != null) return;
-                selected[0] = index;
-                screen.selection = 0;
-                for (int j = 0; j < channels.getChildCount(); j++) {
-                    channels.getChildAt(j).setSelected(j == index);
-                }
-                panel.removeAllViews();
-                choices(panel, lines.get(index).episodes, 6, 48);
-                focusContent();
+                selected[0] = index; screen.selection = 0;
+                for (int j = 0; j < channels.getChildCount(); j++) channels.getChildAt(j).setSelected(j == index);
+                bind.run(); focusContent();
             });
             option.setSelected(i == selected[0]);
         }
-        choices(panel, lines.get(selected[0]).episodes, 6, 48);
+        bind.run();
+    }
+
+    private void episodeChoices(LinearLayout parent, List<Choice> items, boolean music, TextView fullTitle) {
+        boolean longNames = music;
+        for (Choice item : items) if (item.title.codePointCount(0, item.title.length()) > 14) longNames = true;
+        final int columns = longNames ? 3 : 6, minWidth = longNames ? 230 : 110;
+        String artist = music ? sharedArtist(items) : "";
+        String prefix = artist.isEmpty() ? "" : artist + " - ";
+        GridView options = new GridView(context) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int count = Math.max(1, Math.min(columns, View.MeasureSpec.getSize(widthSpec) / ui.px(minWidth)));
+                if (View.MeasureSpec.getSize(widthSpec) > 0 && getNumColumns() != count) setNumColumns(count);
+                super.onMeasure(widthSpec, heightSpec);
+            }
+        };
+        options.setNumColumns(columns); options.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        options.setHorizontalSpacing(ui.px(10)); options.setVerticalSpacing(ui.px(10));
+        options.setPadding(ui.px(2), ui.px(8), ui.px(2), ui.px(12)); options.setClipToPadding(false);
+        options.setSelector(ui.selector()); options.setDrawSelectorOnTop(true);
+        options.setAdapter(new BaseAdapter() {
+            public int getCount() { return items.size(); }
+            public Choice getItem(int position) { return items.get(position); }
+            public long getItemId(int position) { return position; }
+            public View getView(int position, View reuse, ViewGroup container) {
+                LinearLayout item = reuse instanceof LinearLayout ? (LinearLayout) reuse : ui.horizontal();
+                if (reuse == null) {
+                    item.setPadding(ui.px(12), ui.px(9), ui.px(12), ui.px(9));
+                    item.setMinimumHeight(ui.px(columns == 3 ? 68 : 52));
+                    item.setBackgroundDrawable(ui.glass(0x55466a8e, 16));
+                    TextView number = ui.text("", 15, BoxUi.SUB);
+                    item.addView(number, new LinearLayout.LayoutParams(ui.px(30), -1));
+                    TextView name = ui.text("", 18, BlUi.TEXT);
+                    name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END);
+                    item.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+                }
+                Choice choice = getItem(position);
+                ((TextView) item.getChildAt(0)).setText(String.format(java.util.Locale.US, "%02d", position + 1));
+                ((TextView) item.getChildAt(1)).setText(prefix.isEmpty() ? choice.title : choice.title.substring(prefix.length()));
+                item.setContentDescription((position + 1) + " · " + choice.title);
+                return item;
+            }
+        });
+        options.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> owner, View view, int position, long id) {
+                fullTitle.setText((position + 1) + " · " + items.get(position).title);
+            }
+            public void onNothingSelected(AdapterView<?> owner) { }
+        });
+        options.setOnItemClickListener((owner, view, position, id) -> {
+            screen.selection = position; items.get(position).action.run();
+        });
+        fullTitle.setText(items.get(Math.min(screen.selection, items.size() - 1)).title);
+        addGrid(parent, options, columns);
     }
 
     private void play(BoxSource.Site site, String flag, String id) {
@@ -867,11 +992,18 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 TextView item = reuse instanceof TextView ? (TextView) reuse : ui.text("", 18, BlUi.TEXT);
                 if (reuse == null) {
                     item.setGravity(Gravity.CENTER);
-                    item.setPadding(ui.px(8), ui.px(6), ui.px(8), ui.px(6));
-                    item.setMinHeight(ui.px(height));
+                    item.setPadding(ui.px(16), ui.px(12), ui.px(16), ui.px(12));
+                    item.setMinHeight(ui.px(height >= 58 ? 94 : height));
+                    if (height >= 58) {
+                        Drawable icon = context.getResources().getDrawable(android.R.drawable.ic_menu_slideshow).mutate();
+                        icon.setColorFilter(0xff8fdbff, PorterDuff.Mode.SRC_IN);
+                        icon.setBounds(0, 0, ui.px(30), ui.px(30));
+                        item.setCompoundDrawables(null, icon, null, null);
+                        item.setCompoundDrawablePadding(ui.px(10));
+                    }
                     item.setMaxLines(2);
                     item.setEllipsize(TextUtils.TruncateAt.END);
-                    item.setBackgroundDrawable(ui.fill(0xff3b323f, 10));
+                    item.setBackgroundDrawable(ui.glass(0x55466a8e, 16));
                 }
                 item.setText(getItem(position).title);
                 return item;
@@ -888,7 +1020,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         grid = content;
         primary = grid;
         content.setOnKeyListener((view, code, event) -> {
-            if (code != KeyEvent.KEYCODE_DPAD_LEFT || Math.max(0, content.getSelectedItemPosition()) % columns != 0) {
+            if (code != KeyEvent.KEYCODE_DPAD_LEFT || Math.max(0, content.getSelectedItemPosition()) % Math.max(1, content.getNumColumns()) != 0) {
                 return false;
             }
             if (event.getAction() == KeyEvent.ACTION_DOWN) navigation.get(screen.tab).requestFocus();
@@ -982,7 +1114,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private static String metadata(JSONObject item, String... keys) {
-        List<String> values = new ArrayList<>();
+        Set<String> values = new LinkedHashSet<>();
         for (String key : keys) {
             String value = BlUi.plain(item.optString(key)).trim();
             if (!value.isEmpty()) values.add(value);
