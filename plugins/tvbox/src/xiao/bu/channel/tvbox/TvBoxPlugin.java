@@ -931,10 +931,14 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             int[] selected = {0};
             JSONObject response=data;
             return () -> {pages.put(cacheKey,response);show(new Screen(from, title, false, () -> {
-                detailPage(site, video, image, lines, selected, MusicSearch.supports(site.api)
-                        || site.name.contains("音乐") || video.optString("vod_type").contains("音乐"));
+                detailPage(site, video, image, lines, selected, music(site, video));
             }), true);};
         });
+    }
+
+    private static boolean music(BoxSource.Site site, JSONObject video) {
+        return MusicSearch.supports(site.api) || site.name.contains("音乐")
+                || video.optString("vod_type").contains("音乐");
     }
 
     private void detailPage(BoxSource.Site site, JSONObject video, String image, List<PlayLine> lines, int[] selected, boolean music) {
@@ -1029,7 +1033,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 int delimiter = entry.indexOf('$');
                 String name = delimiter < 0 ? "播放" : entry.substring(0, delimiter);
                 String id = delimiter < 0 ? entry : entry.substring(delimiter + 1);
-                line.episodes.add(new Choice(name, () -> play(site, flag, id, videoName(video) + " · " + name)));
+                String title = music(site, video) ? BlUi.plain(name) : videoName(video) + " · " + name;
+                line.episodes.add(new Choice(name, () -> play(site, flag, id, title)));
                 if (++episodeCount >= 500) break;
             }
             if (!line.episodes.isEmpty()) lines.add(line);
