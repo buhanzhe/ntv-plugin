@@ -159,7 +159,11 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private BoxHttp http;
     private FrameLayout container;
     private ImageView backdropArt;
+    private ImageView ambientArt;
     private View backdropShade;
+    private BoxGlass sidebarGlass;
+    private String backdropUrl="";
+    private int backdropGeneration;
     private BoxDashPlayer dashPlayer;
     private BoxSniffer sniffer;
     private LinearLayout root, body, actions;
@@ -187,6 +191,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         source = new BoxSource(context, host, assets, http);
         art = new BoxArt(http);
         container = new FrameLayout(context);container.setBackgroundColor(0xff000000);
+        container.setBackgroundDrawable(ui.backdrop());
+        ambientArt=new ImageView(context);ambientArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        container.addView(ambientArt,new FrameLayout.LayoutParams(-1,-1));
         backdropArt = ui.imageView();backdropArt.setScaleType(ImageView.ScaleType.CENTER_CROP);backdropArt.setVisibility(View.GONE);
         container.addView(backdropArt,new FrameLayout.LayoutParams(-1,-1));
         backdropShade = new View(context);
@@ -204,7 +211,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         };
         root.setOrientation(LinearLayout.HORIZONTAL);
         root.setBaselineAligned(false);
-        root.setBackgroundDrawable(ui.backdrop());
+        root.setBackgroundColor(0x00000000);
         root.setPadding(ui.px(24), ui.px(24), ui.px(12), ui.px(24));
         boolean compact = context.getResources().getDisplayMetrics().widthPixels < ui.px(960);
         root.addView(sidebar(), new LinearLayout.LayoutParams(ui.px(compact ? 138 : 170), -1));
@@ -272,10 +279,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private LinearLayout sidebar() {
         LinearLayout bar = ui.vertical();
         bar.setPadding(ui.px(12), ui.px(30), ui.px(12), ui.px(24));
-        bar.setBackgroundDrawable(ui.glass(0xaa273a49, 28));
+        sidebarGlass=new BoxGlass(bar,container,ui.px(28),Math.max(1,ui.px(1)));
+        ui.material(sidebarGlass);
+        bar.setBackgroundDrawable(sidebarGlass);
         for (Tab tab : new Tab[]{Tab.SEARCH, Tab.HOME, Tab.SITES, Tab.CATEGORIES, Tab.CONFIG}) {
             Button button = ui.button(tab.label);
-            button.setBackgroundDrawable(ui.navigationFocus());
+            button.setBackgroundDrawable(ui.navigationFocus(button));button.setTextColor(BoxUi.TEXT);
             button.setAllCaps(false);
             button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
             button.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
@@ -459,8 +468,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         body.addView(section, 0, new LinearLayout.LayoutParams(-1, ui.px(44)));
         if (featured != null) {
             JSONObject video = featured;
-            root.setBackgroundColor(0x00000000);backdropArt.setVisibility(View.VISIBLE);backdropShade.setVisibility(View.VISIBLE);
-            art.load(backdropArt, artwork(model.site, video), Math.min(1280,Math.max(context.getResources().getDisplayMetrics().widthPixels,context.getResources().getDisplayMetrics().heightPixels)));
+            backdrop(artwork(model.site,video),true);
             int height = context.getResources().getDisplayMetrics().widthPixels < ui.px(960) ? 300 : 400;
             FrameLayout spotlight=new FrameLayout(context);
             spotlight.addView(featurePanel(model.site,video,video.optString("vod_id").isEmpty()?"搜索片名":"▶  查看选集",()->openVideo(model.site,video),true),new FrameLayout.LayoutParams(-1,-1));
@@ -475,7 +483,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     for(int i=0;model.videos!=null&&i<Math.min(32,model.videos.length());i++){
                         JSONObject candidate=model.videos.optJSONObject(i);if(candidate==null||!candidate.optString("action").isEmpty()||"action".equals(candidate.optString("vod_tag"))||"folder".equals(candidate.optString("vod_tag"))||"cate".equals(candidate.optString("vod_tag")))continue;
                         String image=artwork(model.site,candidate);android.graphics.Bitmap ready=art.cached(image);if(ready==null)continue;
-                        boolean focused=spotlight.hasFocus();backdropArt.setTag(image);backdropArt.setImageBitmap(ready);
+                        boolean focused=spotlight.hasFocus();backdrop(image,true);
                         spotlight.removeAllViews();spotlight.addView(featurePanel(model.site,candidate,candidate.optString("vod_id").isEmpty()?"搜索片名":"▶  查看选集",()->openVideo(model.site,candidate),true),new FrameLayout.LayoutParams(-1,-1));
                         if(focused&&primary!=null)primary.requestFocus();return;
                     }
@@ -541,7 +549,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             if (!summary.getText().toString().isEmpty()) info.addView(summary);
             LinearLayout buttons = ui.horizontal();
             Button details = action(buttons, actionLabel, open);
-            details.setBackgroundDrawable(ui.primaryFocus()); details.setTextColor(BoxUi.TEXT);
+            details.setBackgroundDrawable(ui.primaryFocus(details)); details.setTextColor(ui.controlText());
             details.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
             details.setMinHeight(ui.px(60));details.setMinimumWidth(ui.px(220));
             Button secondary=video.optString("vod_id").isEmpty()&&currentSite!=null?action(buttons,"浏览分类",()->switchTab(Tab.CATEGORIES)):action(buttons,"搜索同名",()->chooseSearchSite(videoName(video)));
@@ -770,6 +778,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             if (item != null && (!item.optString("vod_id").isEmpty() || !item.optString("vod_name").isEmpty())) videos.add(item);
         }
         if (videos.isEmpty()) return false;
+        if(poster&&!artwork(site,videos.get(0)).isEmpty())backdrop(artwork(site,videos.get(0)),false);
         int columns = poster ? 5 : VIDEO_COLUMNS;
         GridView cards = ui.grid(columns);cards.setSelector(ui.fill(0,0));
         cards.setAdapter(new BaseAdapter() {
@@ -1187,6 +1196,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Button action(LinearLayout parent, String label, Runnable run) {
         Button button = ui.button(label);
+        int icon=label.equals("返回")?5:label.equals("↻")?6:label.startsWith("▶")?7:label.equals("搜索同名")?3:label.equals("筛选")?8:-1;
+        if(icon>=0){
+            button.setText(label.startsWith("▶")?label.substring(1).trim():label.equals("↻")?"":label);
+            Drawable glyph=ui.actionIcon(icon);glyph.setBounds(0,0,ui.px(24),ui.px(24));
+            button.setCompoundDrawables(glyph,null,null,null);button.setCompoundDrawablePadding(ui.px(label.equals("↻")?0:8));
+            button.setContentDescription(label.equals("↻")?"刷新站点":button.getText());
+        }
         button.setAllCaps(false);
         button.setOnClickListener(view -> run.run());
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-2, -2);
@@ -1203,7 +1219,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             if (history.size() > MAX_HISTORY) history.removeLast();
         }
         screen = next;
-        backdropArt.setVisibility(View.GONE);backdropShade.setVisibility(View.GONE);root.setBackgroundDrawable(ui.backdrop());
+        ambientBackdrop();
         if (next.tab == Tab.SITES) stations = next;
         heading.setText(next.title);
         heading.setVisibility(View.VISIBLE);
@@ -1223,6 +1239,29 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (!history.isEmpty() && !(next.tab==Tab.HOME&&next.landing)) action(actions, "返回", this::onBack);
         next.render.run();
         focusContent();
+    }
+
+    private void ambientBackdrop() {
+        backdropArt.setVisibility(View.GONE);
+        backdropShade.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xbb07121b,0xd507121b,0xd007121b}));
+        backdropShade.setVisibility(View.VISIBLE);
+    }
+
+    private void backdrop(String url,boolean cinema) {
+        if(cinema){
+            backdropArt.setVisibility(View.VISIBLE);
+            backdropShade.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{0xe6061019,0x99061019,0x19061019}));
+            backdropShade.setVisibility(View.VISIBLE);
+        }else ambientBackdrop();
+        if(url.equals(backdropUrl)&&backdropArt.getDrawable()!=null)return;
+        backdropUrl=url;int request=++backdropGeneration;
+        art.load(backdropArt,url,Math.min(1280,Math.max(context.getResources().getDisplayMetrics().widthPixels,
+                context.getResources().getDisplayMetrics().heightPixels)),bitmap -> art.frost(bitmap,blurred -> {
+            if(disposed||request!=backdropGeneration)return;
+            ambientArt.setTag(url);ambientArt.setImageBitmap(blurred);sidebarGlass.image(blurred);
+        }));
     }
 
     private void saveSelection() {

@@ -16,11 +16,14 @@ import okhttp3.Response;
 
 /** Bounded artwork cache for recycled TVBox cards. */
 final class BoxArt {
+    interface Ready { void image(Bitmap bitmap); }
     private static final int DOWNLOAD_LIMIT = 3 * 1024 * 1024;
     private final BoxHttp http;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 2, 15, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.DiscardOldestPolicy());
+    private final ThreadPoolExecutor frosting = new ThreadPoolExecutor(1, 1, 15, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(1), new ThreadPoolExecutor.DiscardOldestPolicy());
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(
             (int) Math.min(6 * 1024 * 1024, Runtime.getRuntime().maxMemory() / 10)) {
         @Override protected int sizeOf(String url, Bitmap bitmap) {
@@ -32,10 +35,12 @@ final class BoxArt {
     BoxArt(BoxHttp http) {
         this.http = http;
         workers.allowCoreThreadTimeOut(true);
+        frosting.allowCoreThreadTimeOut(true);
     }
 
     void load(ImageView view, String url) { load(view,url,640); }
-    void load(ImageView view, String url, int edge) {
+    void load(ImageView view, String url, int edge) { load(view,url,edge,null); }
+    void load(ImageView view, String url, int edge, Ready ready) {
         String cacheKey=edge+"\n"+url;
         if (view.getBackground() == null) {
             view.setBackgroundDrawable(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
@@ -45,6 +50,7 @@ final class BoxArt {
         Bitmap existing = url.isEmpty() ? null : cache.get(cacheKey);
         if(existing==null&&edge>640&&!url.isEmpty())existing=cached(url);
         view.setImageBitmap(existing);
+        if(existing!=null&&ready!=null)ready.image(existing);
         if (url.isEmpty() || existing != null || closed) return;
         workers.execute(() -> {
             if (closed) return;
@@ -54,12 +60,43 @@ final class BoxArt {
             cache.put(cacheKey, bitmap);
             Bitmap result = bitmap;
             main.post(() -> {
-                if (!closed && url.equals(view.getTag())) view.setImageBitmap(result);
+                if (!closed && url.equals(view.getTag())) {
+                    view.setImageBitmap(result);
+                    if(ready!=null)ready.image(result);
+                }
             });
         });
     }
 
     Bitmap cached(String url) { return cache.get("640\n"+url); }
+
+    void frost(Bitmap source, Ready ready) {
+        if(closed)return;
+        frosting.execute(() -> {
+            if(closed)return;
+            float scale=Math.min(1f,96f/Math.max(source.getWidth(),source.getHeight()));
+            int width=Math.max(1,Math.round(source.getWidth()*scale)),height=Math.max(1,Math.round(source.getHeight()*scale));
+            Bitmap sample=Bitmap.createScaledBitmap(source,width,height,true);
+            int[] pixels=new int[width*height],scratch=new int[pixels.length];
+            sample.getPixels(pixels,0,width,0,0,width,height);
+            if(sample!=source)sample.recycle();
+            for(int pass=0;pass<4;pass++){
+                for(int axis=0;axis<2;axis++){
+                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+                        int red=0,green=0,blue=0;
+                        for(int k=-3;k<=3;k++){
+                            int index=axis==0?y*width+Math.max(0,Math.min(width-1,x+k)):Math.max(0,Math.min(height-1,y+k))*width+x;
+                            int color=pixels[index];red+=(color>>16)&255;green+=(color>>8)&255;blue+=color&255;
+                        }
+                        scratch[y*width+x]=0xff000000|((red/7)<<16)|((green/7)<<8)|(blue/7);
+                    }
+                    int[] swap=pixels;pixels=scratch;scratch=swap;
+                }
+            }
+            Bitmap result=Bitmap.createBitmap(pixels,width,height,Bitmap.Config.ARGB_8888);
+            main.post(() -> {if(!closed)ready.image(result);});
+        });
+    }
 
     private Bitmap fetch(String url, int edge) {
         try {
@@ -108,6 +145,7 @@ final class BoxArt {
     void close() {
         closed = true;
         workers.shutdownNow();
+        frosting.shutdownNow();
         main.removeCallbacksAndMessages(null);
         cache.evictAll();
     }

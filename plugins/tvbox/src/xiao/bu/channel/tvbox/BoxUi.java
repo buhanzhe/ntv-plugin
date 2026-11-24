@@ -21,10 +21,17 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import xiao.bu.channel.bl.BlUi;
 
-/** Lightweight glass styling: cached gradients, no frame capture or live blur. */
+/** Native glass styling with bounded, static artwork blur; no frame capture. */
 final class BoxUi extends BlUi {
     static final int TEXT = 0xfff4f8ff, SUB = 0xffb8cbe1, ACCENT = 0xffe7f6ff;
     private android.graphics.Typeface display;
+    private BoxGlass material;
+    void material(BoxGlass value){material=value;}
+    Drawable navigationFocus(Button button){return material==null?navigationFocus():material.control(button,px(22),3);}
+    Drawable primaryFocus(Button button){return material==null?primaryFocus():material.control(button,px(28),2);}
+    android.content.res.ColorStateList controlText(){
+        return new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_pressed},new int[]{}},new int[]{0xff17222b,0xff17222b,TEXT});
+    }
     BoxUi(Context context) {
         super(context);
         try { display=android.graphics.Typeface.createFromAsset(context.getAssets(),"fonts/arphic-gbsn00lp.ttf"); }
@@ -116,7 +123,8 @@ final class BoxUi extends BlUi {
     }
 
     @Override public Button button(String value) {
-        Button b = super.button(value); b.setTextColor(TEXT); b.setBackgroundDrawable(focus(1));
+        Button b = super.button(value); b.setTextColor(controlText());
+        b.setBackgroundDrawable(material==null?focus(1):material.control(b,px(22),1));
         b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,px(22)); return b;
     }
 
@@ -161,17 +169,29 @@ final class BoxUi extends BlUi {
         };
     }
 
-    Drawable navigationIcon(int kind) {
+    Drawable navigationIcon(int kind) { return icon(kind,false); }
+    Drawable actionIcon(int kind) { return icon(kind,true); }
+    private Drawable icon(int kind,boolean darkFocus) {
         return new Drawable(){
             private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path path=new Path();
+            private final RectF rect=new RectF();
             @Override public void draw(Canvas canvas){int saved=canvas.save();Rect b=getBounds();canvas.translate(b.left,b.top);canvas.scale(b.width()/24f,b.height()/24f);
-                paint.setColor(TEXT);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.6f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);path.reset();
-                if(kind==3){canvas.drawCircle(10,10,7,paint);canvas.drawLine(15,15,22,22,paint);}
-                else if(kind==1){canvas.drawRoundRect(new RectF(2,4,22,20),2,2,paint);path.moveTo(9,8);path.lineTo(16,12);path.lineTo(9,16);path.close();canvas.drawPath(path,paint);}
-                else if(kind==0){path.moveTo(3,7);path.lineTo(12,2);path.lineTo(21,7);path.lineTo(12,12);path.close();canvas.drawPath(path,paint);for(int y:new int[]{12,17}){path.reset();path.moveTo(3,y);path.lineTo(12,y+5);path.lineTo(21,y);canvas.drawPath(path,paint);}}
-                else if(kind==2){for(int x:new int[]{3,14})for(int y:new int[]{3,14})canvas.drawRoundRect(new RectF(x,y,x+7,y+7),2,2,paint);}
-                else{for(int i=0;i<16;i++){double angle=i*Math.PI/8;float radius=i%2==0?10:8;float x=12+(float)Math.cos(angle)*radius,y=12+(float)Math.sin(angle)*radius;if(i==0)path.moveTo(x,y);else path.lineTo(x,y);}path.close();canvas.drawPath(path,paint);canvas.drawCircle(12,12,3,paint);}
+                boolean focus=false;for(int state:getState())if(state==android.R.attr.state_focused||state==android.R.attr.state_pressed)focus=true;
+                paint.setColor(darkFocus&&focus?0xff17222b:TEXT);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.65f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);path.reset();
+                if(kind==3){canvas.drawCircle(10.3f,10.3f,7.2f,paint);canvas.drawLine(15.6f,15.6f,21.6f,21.6f,paint);}
+                else if(kind==1){
+                    canvas.drawCircle(12,12,9.3f,paint);canvas.drawCircle(12,12,1.25f,paint);
+                    for(int i=0;i<5;i++){double a=-Math.PI/2+i*Math.PI*2/5;canvas.drawCircle(12+(float)Math.cos(a)*5.6f,12+(float)Math.sin(a)*5.6f,2.35f,paint);}
+                }
+                else if(kind==0){path.moveTo(3,7);path.lineTo(12,2.5f);path.lineTo(21,7);path.lineTo(12,11.5f);path.close();canvas.drawPath(path,paint);for(int y=12;y<=17;y+=5){path.reset();path.moveTo(3,y);path.lineTo(12,y+4.5f);path.lineTo(21,y);canvas.drawPath(path,paint);}}
+                else if(kind==2){for(int x=3;x<=14;x+=11)for(int y=3;y<=14;y+=11){rect.set(x,y,x+7,y+7);canvas.drawRoundRect(rect,2.2f,2.2f,paint);}}
+                else if(kind==5){path.moveTo(14.5f,4.5f);path.lineTo(7,12);path.lineTo(14.5f,19.5f);canvas.drawPath(path,paint);}
+                else if(kind==6){rect.set(4,4,20,20);canvas.drawArc(rect,-45,285,false,paint);path.moveTo(14,4);path.lineTo(19.5f,4);path.lineTo(19.5f,9.5f);canvas.drawPath(path,paint);}
+                else if(kind==7){path.moveTo(7,4);path.lineTo(20,12);path.lineTo(7,20);path.close();paint.setStyle(Paint.Style.FILL);canvas.drawPath(path,paint);}
+                else if(kind==8){path.moveTo(3,4);path.lineTo(21,4);path.lineTo(14,12);path.lineTo(14,19);path.lineTo(10,21);path.lineTo(10,12);path.close();canvas.drawPath(path,paint);}
+                else{for(int i=0;i<32;i++){double a=i*Math.PI/16;float radius=i%4==0||i%4==3?10:8.25f;float x=12+(float)Math.cos(a)*radius,y=12+(float)Math.sin(a)*radius;if(i==0)path.moveTo(x,y);else path.lineTo(x,y);}path.close();canvas.drawPath(path,paint);canvas.drawCircle(12,12,3.5f,paint);}
                 canvas.restoreToCount(saved);}
+            public boolean isStateful(){return darkFocus;}protected boolean onStateChange(int[] state){invalidateSelf();return true;}
             public void setAlpha(int alpha){paint.setAlpha(alpha);}public void setColorFilter(ColorFilter filter){paint.setColorFilter(filter);}public int getOpacity(){return PixelFormat.TRANSLUCENT;}
         };
     }
