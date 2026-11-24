@@ -1,7 +1,7 @@
 #EXTM3U
 #EXTINF:-1 group-title="插件",文件浏览
-https://raw.githubusercontent.com/buhanzhe/ntv-plugin/7acde67ac9d4755ea6431d5d855c8943ec2a7ff1/plugins/file-browser/dist/file-browser.jar?sha256=f220faea6c078edada7d33996ec87e45bb54d9ff5db447e9f7259fbbcec73ae2
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/a0238342f1d9cbb45a45dd5dc1b1a69b6a763a36/plugins/file-browser/dist/file-browser.jar?sha256=f220faea6c078edada7d33996ec87e45bb54d9ff5db447e9f7259fbbcec73ae2
 #EXTINF:-1 group-title="插件",TVBox
-https://raw.githubusercontent.com/buhanzhe/ntv-plugin/7acde67ac9d4755ea6431d5d855c8943ec2a7ff1/plugins/tvbox/dist/tvbox.jar?sha256=239ae3bda7eb53abe6925c7f62e9833dce3cf04b83be9b027077000f541d430f&url=http%3A%2F%2Fwww.xn--sss604efuw.cc%2Ftv
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/a0238342f1d9cbb45a45dd5dc1b1a69b6a763a36/plugins/tvbox/dist/tvbox.jar?sha256=742d21e683d81e0c0f654bd7acdf3842d5a38b11a932b362a5bf20e4a6290577&url=http%3A%2F%2Fwww.xn--sss604efuw.cc%2Ftv
 #EXTINF:-1 group-title="插件",BL 哔哩哔哩
-https://raw.githubusercontent.com/buhanzhe/ntv-plugin/7acde67ac9d4755ea6431d5d855c8943ec2a7ff1/plugins/bl/dist/bl.jar?sha256=f8b4005fe683fddaf739bfb5625fdb3be724f8afc1012017d7a2f4c7784a1604
+https://raw.githubusercontent.com/buhanzhe/ntv-plugin/a0238342f1d9cbb45a45dd5dc1b1a69b6a763a36/plugins/bl/dist/bl.jar?sha256=f8b4005fe683fddaf739bfb5625fdb3be724f8afc1012017d7a2f4c7784a1604
