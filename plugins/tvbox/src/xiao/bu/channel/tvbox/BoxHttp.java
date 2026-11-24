@@ -21,6 +21,12 @@ final class BoxHttp {
     private final OkHttpClient client;
 
     BoxHttp(OkHttpClient client) { this.client = client; }
+    BoxHttp forSearch() {
+        return new BoxHttp(client.newBuilder().dispatcher(new okhttp3.Dispatcher())
+                .connectTimeout(3, TimeUnit.SECONDS).readTimeout(6, TimeUnit.SECONDS)
+                .writeTimeout(6, TimeUnit.SECONDS).callTimeout(8, TimeUnit.SECONDS).build());
+    }
+    void cancelRequests() { client.dispatcher().cancelAll(); }
 
     static HttpUrl url(String value) throws IOException {
         HttpUrl result = HttpUrl.parse(value);

@@ -91,8 +91,8 @@ def build(args):
     is_python = args.plugin == "python"
     info = (dict(api=1, version=2, minSdk=14 if arm32 else 24, entry="xiao.bu.python.RuntimePlugin",
                  abis=[args.abi], pythonVersion="3.11.17" if arm32 else PYTHON_VERSION)
-            if is_python else dict(api=1, version=6, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
-                                   native=True, hostCapability="VodHost"))
+            if is_python else dict(api=1, version=7, minSdk=14, entry="xiao.bu.channel.tvbox.TvBoxPlugin",
+                                   native=True, hostCapability="VodHost", blockHostChannelClick=True))
     android = args.sdk / "platforms/android-34/android.jar"
     classes = output / "classes"
     if classes.exists():

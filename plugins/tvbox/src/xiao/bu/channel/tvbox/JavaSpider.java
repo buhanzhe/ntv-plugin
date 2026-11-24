@@ -27,19 +27,29 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
         private final Context context;
         private final BoxHttp http;
         private LocalSpiderProxy proxy;
-        private final LruCache<String, DexClassLoader> loaders = new LruCache<>(6);
+        private boolean closed;
+        private static final class Loaded {
+            final DexClassLoader loader; final long created = System.currentTimeMillis();
+            Loaded(DexClassLoader loader) { this.loader = loader; }
+        }
+        private final LruCache<String, Loaded> loaders = new LruCache<>(6);
 
         Jars(Context context, BoxHttp http) { this.context = context; this.http = http; }
 
-        JavaSpider open(BoxSource.Site site, String specification, String extend) throws Exception {
+        synchronized JavaSpider open(BoxSource.Site site, String specification, String extend, boolean activate, BoxHttp transport) throws Exception {
+            if (closed || Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("爬虫加载已取消");
             if (proxy == null) proxy = new LocalSpiderProxy();
             Proxy.configure(proxy.url());
-            DexClassLoader loader = loaders.get(specification);
+            Loaded cached = loaders.get(specification);
+            long age = cached == null ? Long.MAX_VALUE : System.currentTimeMillis() - cached.created;
+            DexClassLoader loader = cached != null && age >= 0 && (age < 600000
+                    || specification.matches("(?is).*;md5;[0-9a-f]{32}")) ? cached.loader : null;
             if (loader == null) {
-                File file = fetch(specification);
+                File file = fetch(specification, transport);
+                if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("爬虫加载已取消");
                 loader = new DexClassLoader(file.getPath(), file.getParent(), null, JavaSpider.class.getClassLoader());
                 initializeJar(loader, new SpiderApplication(context.getApplicationContext(), JavaSpider.class.getClassLoader()));
-                loaders.put(specification, loader);
+                loaders.put(specification, new Loaded(loader));
             }
             String name = site.api.substring(4);
             if (!name.matches("[A-Za-z_$][A-Za-z0-9_$]*")) throw new IOException("CatVod 入口名无效");
@@ -56,7 +66,7 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
                 Method init = optional(type, "init", Context.class, String.class);
                 if (init != null) call(init, target, context, extend);
                 else call(type.getMethod("init", Context.class), target, context);
-                proxy.set(spider);
+                if (activate) proxy.set(spider);
                 return spider;
             } catch (Exception | LinkageError ex) {
                 spider.close();
@@ -64,18 +74,20 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
             }
         }
 
-        private File fetch(String specification) throws Exception {
+        private File fetch(String specification, BoxHttp transport) throws Exception {
             String[] parts = specification.split(";md5;", 2);
             String md5 = parts.length == 2 ? parts[1] : "";
-            if (md5.startsWith("http")) md5 = http.text(md5, 1024).trim();
+            if (md5.startsWith("http")) md5 = transport.text(md5, 1024).trim();
             if (!md5.isEmpty() && !md5.matches("(?i)[0-9a-f]{32}")) throw new IOException("CatVod JAR 的 MD5 无效");
             File dir = new File(context.getCacheDir(), "tvbox-spiders");
             if (!dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory()) throw new IOException("无法创建 CatVod 缓存");
+            File cached = SpiderJarCache.find(dir, specification, md5, System.currentTimeMillis());
+            if (cached != null) return cached;
             File temp = File.createTempFile("jar-", ".tmp", dir);
             try {
                 MessageDigest hash = MessageDigest.getInstance("SHA-256");
                 MessageDigest legacyHash = MessageDigest.getInstance("MD5");
-                try (Response response = http.get(parts[0])) {
+                try (Response response = transport.get(parts[0])) {
                     if (!response.isSuccessful() || response.body() == null) throw new IOException("CatVod JAR HTTP " + response.code());
                     try (InputStream in = response.body().byteStream(); FileOutputStream out = new FileOutputStream(temp)) {
                         byte[] buffer = new byte[16384];
@@ -92,8 +104,12 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
                 if (!md5.isEmpty() && !md5.equalsIgnoreCase(hex(legacyHash.digest())))
                     throw new IOException("CatVod JAR 的 MD5 不匹配");
                 File target = new File(dir, hex(hash.digest()) + ".jar");
+                if (target.isFile() && !target.getName().equals(SpiderJarCache.hash(target, "SHA-256") + ".jar")
+                        && !target.delete()) throw new IOException("无法替换损坏的 CatVod 缓存");
                 if (!target.isFile() && (!temp.setReadOnly() || !temp.renameTo(target)))
                     throw new IOException("无法保存 CatVod JAR");
+                SpiderJarCache.remember(dir, specification, target.getName().replace(".jar", ""), md5,
+                        System.currentTimeMillis());
                 return target;
             } finally {
                 temp.delete();
@@ -107,7 +123,8 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
             call(init.getMethod("init", Context.class), null, context);
         }
 
-        void close() {
+        synchronized void close() {
+            closed = true;
             if (proxy != null) proxy.close();
             loaders.evictAll();
         }
@@ -129,6 +146,7 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
     private final Class<?> type;
     private final ClassLoader loader;
     private final LocalSpiderProxy server;
+    private boolean musicPrepared;
 
     private JavaSpider(Object target, ClassLoader loader, LocalSpiderProxy server) {
         this.target = target;
@@ -136,6 +154,18 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
         this.loader = loader;
         this.server = server;
     }
+    boolean prepareMusic() throws Exception {
+        if (!musicPrepared) {
+            if (!MusicSearch.prepare(target)) return false;
+            musicPrepared = true;
+        }
+        return true;
+    }
+    JSONObject musicSearch(BoxHttp http, String query, int page) throws Exception {
+        if (!prepareMusic()) return null;
+        return MusicSearch.search(target, http, query, page);
+    }
+    JSONObject musicPlay(BoxHttp http, String id) throws Exception { return MusicSearch.play(target, http, id); }
 
     public JSONObject invoke(String method, Object... args) throws Exception {
         Object result;
@@ -173,7 +203,9 @@ final class JavaSpider implements BoxSource.Spider, LocalSpiderProxy.Source {
             return new JSONObject().put("toast", String.valueOf(result));
         if (result == null || result.toString().trim().isEmpty())
             throw new IOException("站点接口返回空内容");
-        return new JSONObject(String.valueOf(result));
+        JSONObject value = new JSONObject(String.valueOf(result));
+        if ("homeContent".equals(method)) musicPrepared = true;
+        return value;
     }
 
     @Override public Object[] proxy(Map<String, String> query) throws Exception {

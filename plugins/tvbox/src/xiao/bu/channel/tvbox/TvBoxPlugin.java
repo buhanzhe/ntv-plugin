@@ -30,6 +30,13 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -68,6 +75,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         final boolean landing;
         final Runnable render;
         int selection;
+        SearchRun search;
 
         Screen(Tab tab, String title, boolean landing, Runnable render) {
             this.tab = tab;
@@ -92,6 +100,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         final JSONArray categories, videos;
         final JSONObject filters;
         final String notice;
+        final long created = android.os.SystemClock.elapsedRealtime();
 
         SiteHome(BoxSource.Site site, JSONArray categories, JSONArray videos, JSONObject filters, String notice) {
             this.site = site;
@@ -100,6 +109,25 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             this.filters = filters;
             this.notice = notice;
         }
+    }
+
+    private static final class SearchHit {
+        final BoxSource.Site site; final JSONObject item;
+        SearchHit(BoxSource.Site site, JSONObject item) { this.site = site; this.item = item; }
+    }
+    private static final class SearchRun {
+        final String query;
+        final List<BoxSource.Site> sites, failures = new ArrayList<>();
+        final List<SearchHit> hits = new ArrayList<>();
+        final Set<String> ids = new HashSet<>();
+        final Set<BoxSource> sessions = Collections.synchronizedSet(new HashSet<BoxSource>());
+        SearchFanout<BoxSource.Site, JSONArray> fanout;
+        BaseAdapter adapter;
+        Button stop, retry;
+        int completed;
+        volatile boolean stopped;
+        boolean finished, timedOut;
+        SearchRun(String query, List<BoxSource.Site> sites) { this.query = query; this.sites = sites; }
     }
 
     private static final class PlayLine {
@@ -113,6 +141,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final int searchConcurrency = android.os.Build.VERSION.SDK_INT < 21 ? 2 : 3;
+    private final ThreadPoolExecutor searches = new ThreadPoolExecutor(searchConcurrency, searchConcurrency,
+            20, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(6));
+    private final Map<String, SiteHome> homes = new LinkedHashMap<String, SiteHome>(8, .75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, SiteHome> entry) { return size() > 8; }
+    };
     private final Map<Tab, Button> navigation = new EnumMap<>(Tab.class);
     private final ArrayDeque<Screen> history = new ArrayDeque<>();
     private final Map<String, JSONObject> selectedFilters = new HashMap<>();
@@ -189,10 +223,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         authorizationPreferences = context.getSharedPreferences("spUtils", Context.MODE_PRIVATE);
         authorizationListener = (preferences, key) -> {
             if (key == null || !key.matches("(?i)(?:quark|uc|baidu|bd|ali|aliyun).*?(?:cookie|token|_ck|_st)$")) return;
-            if (android.os.SystemClock.uptimeMillis() > authorizationFeedbackUntil) return;
+            boolean feedback = android.os.SystemClock.uptimeMillis() <= authorizationFeedbackUntil;
             authorizationFeedbackUntil = 0;
             main.post(() -> {
                 if (disposed) return;
+                homes.clear();
+                if (!feedback) return;
                 String text = "网盘授权信息已更新，关闭并重新打开登录面板可刷新状态";
                 message(text);
                 android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show();
@@ -236,7 +272,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void switchTab(Tab tab) {
         if (pending != null || screen.tab == tab && screen.landing) return;
-        if (currentSite == null && tab != Tab.SITES && tab != Tab.CONFIG) return;
+        if (currentSite == null && tab != Tab.SITES && tab != Tab.CONFIG && tab != Tab.SEARCH) return;
         switch (tab) {
             case CONFIG:
                 show(configScreen(), true);
@@ -281,6 +317,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     history.clear();
                     configUrl = url;
                 }
+                homes.clear();
                 currentSite = null;
                 Screen next = new Screen(Tab.SITES, "TVBox 站点", true, () -> {
                     List<Choice> choices = new ArrayList<>();
@@ -301,6 +338,11 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             SiteHome notice = new SiteHome(site, null, null, null, site.name);
             currentSite = notice;
             show(new Screen(Tab.HOME, site.name, true, () -> message(site.name)), true);
+            return;
+        }
+        SiteHome cached = homes.get(siteKey(site));
+        if (cached != null && android.os.SystemClock.elapsedRealtime() - cached.created < 120000) {
+            load(() -> { source.select(site); return () -> { currentSite = cached; show(homeScreen(cached), true); }; });
             return;
         }
         load(() -> {
@@ -340,13 +382,16 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             SiteHome model = new SiteHome(site, categories, videos, filters, notice);
             return () -> {
                 currentSite = model;
+                homes.put(siteKey(site), model);
                 show(homeScreen(model), true);
             };
         });
     }
+    private static String siteKey(BoxSource.Site site) { return site.origin + "\n" + site.key + "\n" + site.api; }
 
     private Screen homeScreen(SiteHome model) {
         return new Screen(Tab.HOME, model.site.name, true, () -> {
+            action(actions, "刷新", () -> { homes.remove(siteKey(model.site)); openSite(model.site); });
             message(model.notice);
             if (!videos(model.site, model.videos)) {
                 if ("push_agent".equals(model.site.key) || model.site.api.contains("PushGuard")) {
@@ -393,11 +438,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Screen searchScreen(SiteHome model) {
         String[] query = {""};
-        return new Screen(Tab.SEARCH, "搜索影片", true, () -> {
-            EditText input = form("输入片名", query[0], "开始搜索", text -> {
+        boolean[] all = {true};
+        return new Screen(Tab.SEARCH, "搜索", true, () -> {
+            LinearLayout scope = ui.horizontal();
+            Button many = action(scope, "多站搜索", () -> { all[0] = true; scope.getChildAt(0).setSelected(true); scope.getChildAt(1).setSelected(false); });
+            Button single = action(scope, "当前站点", () -> { all[0] = false; scope.getChildAt(0).setSelected(false); scope.getChildAt(1).setSelected(true); });
+            many.setSelected(all[0]); single.setSelected(!all[0]); single.setEnabled(model != null); body.addView(scope);
+            EditText input = form("输入片名、歌手或歌曲", query[0], "开始搜索", text -> {
                 if (text.isEmpty()) return;
                 query[0] = text;
-                listing(model.site, "搜索 · " + text, "", text, 1, true);
+                if (all[0] || model == null) chooseSearchSite(text);
+                else listing(model.site, "搜索 · " + text, "", text, 1, true);
             });
             GridView keyboard = ui.keyboard(input);
             addGrid(body, keyboard, 10);
@@ -406,15 +457,99 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void chooseSearchSite(String query) {
         if (pending != null) return;
-        List<Choice> sites = new ArrayList<>();
+        List<BoxSource.Site> sites = new ArrayList<>();
         for (BoxSource.Site site : source.sites()) {
-            if (!site.searchable || currentSite != null && site.key.equals(currentSite.site.key)) continue;
-            sites.add(new Choice(site.name, () -> listing(site, site.name + " · " + query, "", query, 1, true)));
+            if (site.searchable) sites.add(site);
         }
-        show(new Screen(Tab.SEARCH, "选择搜索站点 · " + query, false, () -> {
-            choices(body, sites, 3, 58);
-            if (sites.isEmpty()) message("配置里没有其他可搜索站点");
-        }), true);
+        startSearch(query, sites);
+    }
+
+    private void startSearch(String query, List<BoxSource.Site> sites) {
+        if (disposed) return;
+        if (sites.isEmpty()) { message("配置里没有可搜索站点"); return; }
+        SearchRun run = new SearchRun(query, sites);
+        Screen results = new Screen(Tab.SEARCH, "多站搜索 · " + query, false, () -> renderSearch(run));
+        results.search = run;
+        show(results, true);
+        BoxSource seed = source.fork();
+        searches.purge();
+        try { run.fanout = new SearchFanout<>(searches, searchConcurrency, sites, site -> {
+            BoxSource session = seed.fork();
+            run.sessions.add(session);
+            try {
+                if (run.stopped) return null;
+                session.select(site);
+                return session.search(query, 1).optJSONArray("list");
+            } finally { run.sessions.remove(session); session.close(); }
+        }, new SearchFanout.Observer<BoxSource.Site, JSONArray>() {
+            public void result(BoxSource.Site site, JSONArray rows, Throwable error) {
+                main.post(() -> {
+                    if (disposed || run.stopped) return;
+                    run.completed++;
+                    if (error != null) run.failures.add(site);
+                    int before = run.hits.size();
+                    for (int i = 0; rows != null && i < Math.min(12, rows.length()) && run.hits.size() < 160; i++) {
+                        JSONObject item = rows.optJSONObject(i);
+                        if (item == null || item.optString("vod_id").isEmpty()) continue;
+                        if (run.ids.add(siteKey(site) + "\n" + item.optString("vod_id"))) run.hits.add(new SearchHit(site, item));
+                    }
+                    if (screen == results) {
+                        run.adapter.notifyDataSetChanged(); searchStatus(run);
+                        if (before == 0 && !run.hits.isEmpty()) focusContent();
+                    }
+                });
+            }
+            public void finished(boolean cancelled) {
+                seed.close();
+                main.post(() -> { run.finished = true; if (!disposed && screen == results) searchStatus(run); });
+            }
+        });
+        } catch (java.util.concurrent.RejectedExecutionException busy) {
+            run.stopped = true;
+            message("上次搜索正在结束，请稍后重试");
+            run.stop.setEnabled(false);
+            return;
+        }
+        main.postDelayed(() -> { if (!run.finished) { run.timedOut = true; cancelSearch(run); if (screen == results) searchStatus(run); } }, 60000);
+    }
+
+    private void renderSearch(SearchRun run) {
+        run.stop = action(actions, "停止", () -> { cancelSearch(run); searchStatus(run); });
+        run.retry = action(actions, "重试失败站点", () -> { if (!run.failures.isEmpty()) startSearch(run.query, new ArrayList<>(run.failures)); });
+        GridView cards = ui.grid(VIDEO_COLUMNS);
+        run.adapter = new BaseAdapter() {
+            public int getCount() { return run.hits.size(); }
+            public SearchHit getItem(int position) { return run.hits.get(position); }
+            public long getItemId(int position) { return position; }
+            public View getView(int position, View reusable, ViewGroup parent) {
+                SearchHit hit = getItem(position);
+                BlTile tile = reusable instanceof BlTile ? (BlTile) reusable : new BlTile(ui);
+                ImageView cover = tile.bind(videoName(hit.item), hit.site.name,
+                        BlUi.plain(hit.item.optString("vod_remarks")));
+                tile.setContentDescription(hit.site.name + " · " + videoName(hit.item));
+                art.load(cover, artwork(hit.site, hit.item)); return tile;
+            }
+        };
+        cards.setAdapter(run.adapter);
+        cards.setOnItemClickListener((parent, view, index, id) -> {
+            screen.selection = index;
+            SearchHit hit = run.hits.get(index); detail(hit.site, hit.item);
+        });
+        addGrid(body, cards, VIDEO_COLUMNS);
+        searchStatus(run);
+    }
+    private void searchStatus(SearchRun run) {
+        run.stop.setEnabled(!run.finished && !run.stopped);
+        run.retry.setEnabled(!run.failures.isEmpty());
+        message((run.timedOut ? "搜索超时，已保留结果" : run.stopped ? "已停止" : run.finished ? "搜索完成" : "搜索中") + " · " + run.completed + "/" + run.sites.size()
+                + " 站 · " + run.hits.size() + " 条结果" + (run.failures.isEmpty() ? "" : " · " + run.failures.size() + " 站失败"));
+    }
+    private void cancelSearch(SearchRun run) {
+        if (run == null || run.finished || run.stopped) return;
+        run.stopped = true;
+        if (run.fanout != null) run.fanout.cancel();
+        synchronized (run.sessions) { for (BoxSource session : run.sessions) session.cancelRequests(); }
+        searches.purge();
     }
 
     private EditText form(String hint, String value, String label, Submit submit) {
@@ -442,14 +577,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void listing(BoxSource.Site site, String label, String type, String search, int page, boolean push) {
         Tab tab = search.isEmpty() ? Tab.CATEGORIES : Tab.SEARCH;
+        SiteHome cached = homes.get(siteKey(site));
         load(() -> {
             source.select(site);
             SiteHome selectedSite = currentSite;
             if (selectedSite == null || selectedSite.site != site) {
-                JSONObject home;
-                try { home = source.home(); }
-                catch (Exception | LinkageError unavailable) { home = new JSONObject(); }
-                selectedSite = new SiteHome(site, home.optJSONArray("class"), home.optJSONArray("list"), home.optJSONObject("filters"), "");
+                selectedSite = cached;
+                if (selectedSite == null) selectedSite = new SiteHome(site, null, null, null, "");
             }
             SiteHome model = selectedSite;
             JSONObject filters = model.filters;
@@ -463,7 +597,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     if (search.isEmpty()) filterBar(site, label, type, filters);
                     if (page > 1) action(actions, "上一页", () -> listing(site, label, type, search, page - 1, false));
                     if (page < pages) action(actions, "下一页", () -> listing(site, label, type, search, page + 1, false));
-                    message(videos(site, items) ? "第 " + page + " 页" : "暂无影片");
+                    message(videos(site, items) ? "第 " + page + " 页" : "没有匹配内容");
                 }), push);
             };
         });
@@ -485,7 +619,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 JSONObject item = getItem(position);
                 BlTile tile = reusable instanceof BlTile ? (BlTile) reusable : new BlTile(ui);
                 String tag = item.optString("vod_tag");
-                String kind = "action".equals(tag) || !item.optString("action").isEmpty() ? "操作"
+                String kind = "音乐".equals(item.optString("vod_type")) ? "音乐" : "action".equals(tag) || !item.optString("action").isEmpty() ? "操作"
                         : "folder".equals(tag) || "cate".equals(tag) ? "目录" : "影片";
                 ImageView cover = tile.bind(videoName(item), metadata(item, "vod_year", "vod_area", "vod_class"),
                         BlUi.plain(item.optString("vod_remarks")));
@@ -571,6 +705,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void runSiteAction(BoxSource.Site site, String command) {
+        homes.remove(siteKey(site));
         authorizationFeedbackUntil = android.os.SystemClock.uptimeMillis() + 5 * 60 * 1000L;
         load(() -> {
             source.select(site);
@@ -773,6 +908,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void show(Screen next, boolean push) {
+        if (screen != null && screen != next) cancelSearch(screen.search);
         if (push && screen != null) {
             saveSelection();
             history.push(screen);
@@ -789,7 +925,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         boolean browsing = next.tab != Tab.CONFIG && next.tab != Tab.SITES;
         for (Map.Entry<Tab, Button> entry : navigation.entrySet()) {
             Tab tab = entry.getKey();
-            entry.getValue().setVisibility(browsing || tab == Tab.SITES || tab == Tab.CONFIG ? View.VISIBLE : View.GONE);
+            entry.getValue().setVisibility(browsing || tab == Tab.SITES || tab == Tab.CONFIG || tab == Tab.SEARCH ? View.VISIBLE : View.GONE);
             entry.getValue().setSelected(tab == next.tab);
         }
         if (!history.isEmpty()) action(actions, "返回", this::onBack);
@@ -899,6 +1035,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     @Override public void dispose() {
         if (disposed) return;
         disposed = true;
+        if (screen != null) cancelSearch(screen.search);
+        searches.shutdownNow();
         if (authorizationPreferences != null && authorizationListener != null)
             authorizationPreferences.unregisterOnSharedPreferenceChangeListener(authorizationListener);
         closeDashPlayer();

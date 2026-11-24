@@ -8,7 +8,7 @@
 - 运行时 · [Python 和 Ku9](plugins/python/README.md)
 - 外部引擎 · [TVBus 打包](plugins/tvbus/README.md)
 
-TVBox v6 的 DASH 播放和统一控件需要更新 nTv 宿主。可从同版 Release 下载 ARM32、ARM64 或 x86 APK；[逐站设备验证](plugins/tvbox/VALIDATION.md) 列出已播放和仍待排查的入口。
+TVBox v7 增加多站搜索、站点与爬虫包缓存，并修复易听歌手搜索。屏蔽 TVBox 左侧宿主频道点击需要同版 Release 的 Bro 1.8.4（ARM32，原签名）；DASH 播放和统一控件也需要支持相应接口的 nTv 宿主。[设备验证](plugins/tvbox/VALIDATION.md) 列出本轮回归及历史逐站结果。
 
 ## 发布
 

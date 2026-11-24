@@ -28,19 +28,31 @@ final class BoxSource implements Closeable {
     private Site current;
     private Spider spider;
     private final JavaSpider.Jars jars;
+    private final boolean ownsJars;
     private final HuyaLive huya;
     private BoxSniffer sniffer;
 
     void setSniffer(BoxSniffer value) { sniffer = value; }
 
     BoxSource(Context context, ChannelPlugin.VodHost host, ClassLoader assets, BoxHttp http) {
+        this(context, host, assets, http, null);
+    }
+    private BoxSource(Context context, ChannelPlugin.VodHost host, ClassLoader assets, BoxHttp http, JavaSpider.Jars shared) {
         this.context = context;
         this.host = host;
         this.assets = assets;
         this.http = http;
-        jars = new JavaSpider.Jars(context, http);
+        ownsJars = shared == null;
+        jars = ownsJars ? new JavaSpider.Jars(context, http) : shared;
         huya = new HuyaLive(http);
     }
+    BoxSource fork() {
+        BoxSource session = new BoxSource(context, host, assets, http.forSearch(), jars);
+        session.origin = origin;
+        session.config = config;
+        return session;
+    }
+    void cancelRequests() { if (!ownsJars) http.cancelRequests(); }
 
     static final class Site {
         final JSONObject config;
@@ -52,7 +64,7 @@ final class BoxSource implements Closeable {
             this.config = config;
             this.origin = origin;
             type = data.optInt("type", -1);
-            searchable = data.optInt("searchable", 1) != 0;
+            searchable = data.optInt("searchable", 1) != 0 || MusicSearch.supports(data.optString("api"));
             key = data.optString("key");
             name = data.optString("name", key);
             api = data.optString("api");
@@ -97,6 +109,7 @@ final class BoxSource implements Closeable {
 
     List<Site> sites() {
         List<Site> result = new ArrayList<>();
+        if (config == null) return result;
         JSONArray sites = config.optJSONArray("sites");
         if (sites != null) for (int i = 0; i < Math.min(600, sites.length()); i++) {
             JSONObject row = sites.optJSONObject(i);
@@ -122,7 +135,7 @@ final class BoxSource implements Closeable {
         config = site.config;
         String extend = site.ext;
         if (extend.startsWith("./") || extend.startsWith("../")) extend = resource(extend);
-        if (site.java()) spider = jars.open(site, scriptLocation(site), extend);
+        if (site.java()) spider = jars.open(site, scriptLocation(site), extend, ownsJars, http);
         else if (site.python()) spider = ScriptSpider.python(host, http, scriptLocation(site), extend, site.key);
         else if (site.javascript()) spider = new ScriptSpider.Js(host, http, assets, scriptLocation(site), extend, site.key);
         current = site;
@@ -143,11 +156,19 @@ final class BoxSource implements Closeable {
     }
 
     JSONObject search(String query, int page) throws Exception {
+        if (current != null && MusicSearch.supports(current.api) && spider instanceof JavaSpider) {
+            JSONObject music = ((JavaSpider) spider).musicSearch(http, query, page);
+            if (music != null) return music;
+        }
         return spider == null ? cms(null, null, query, page)
                 : spider.invoke("searchContent", query, false, String.valueOf(page));
     }
 
     JSONObject detail(String id) throws Exception {
+        if (current != null && MusicSearch.supports(current.api)) {
+            JSONObject song = MusicSearch.detail(id);
+            if (song != null) return song;
+        }
         return spider == null ? cms(null, id, null, 1) : spider.invoke("detailContent", new JSONArray().put(id));
     }
 
@@ -157,10 +178,19 @@ final class BoxSource implements Closeable {
     }
 
     JSONObject play(String flag, String id) throws Exception {
+        if (MusicSearch.supports(current.api) && spider instanceof JavaSpider) ((JavaSpider) spider).prepareMusic();
         JSONArray flags = config.optJSONArray("flags");
-        JSONObject result = spider == null
-                ? current.type == 4 ? httpPlay(flag, id) : new JSONObject().put("url", id)
-                : spider.invoke("playerContent", flag, id, flags == null ? new JSONArray() : flags);
+        JSONObject result;
+        try {
+            result = spider == null
+                    ? current.type == 4 ? httpPlay(flag, id) : new JSONObject().put("url", id)
+                    : spider.invoke("playerContent", flag, id, flags == null ? new JSONArray() : flags);
+        } catch (IOException empty) {
+            if (!"站点接口返回空内容".equals(empty.getMessage()) || !MusicSearch.supports(current.api)
+                    || !(spider instanceof JavaSpider)) throw empty;
+            result = ((JavaSpider) spider).musicPlay(http, id);
+            if (result == null) throw empty;
+        }
         String url = playbackUrl(result.opt("url"));
         result.put("url", url);
         if (result.optInt("parse") != 0 || result.optInt("jx") != 0) {
@@ -323,6 +353,7 @@ final class BoxSource implements Closeable {
     }
 
     public void close() {
-        try { closeSpider(); } finally { jars.close(); }
+        cancelRequests();
+        try { closeSpider(); } finally { if (ownsJars) jars.close(); }
     }
 }
