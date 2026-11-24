@@ -17,17 +17,10 @@ PLUGINS = [
     ("python", "Python 运行时", "python", ["python/dist/python-arm32.jar", "python/dist/python-arm64.jar"]),
     ("bl", "BL 哔哩哔哩", "channel", ["bl/dist/bl.jar"]),
     ("tvbus", "TVBus", "tvbus", ["tvbus/dist/tvbus.jar"]),
-    ("folia-full", "Folia 音乐", "channel", ["folia-full/dist/folia-full.jar"]),
-    ("folia", "Folia 音频频道", "channel", ["folia/dist/folia.jar"]),
     ("ku9-hnyx", "Ku9 湖南 IPv6", "ku9-js", ["ku9/hnyx.js"]),
-    ("radio-classic", "经典唱片", "radio-ui", ["radio-ui2/dist/radio-classic.jar"]),
-    ("radio-optical", "柔光唱片", "radio-ui", ["radio-ui2/dist/radio-ui2.jar"]),
-    ("radio-ui-legacy", "旧版电台界面", "archive", ["radio-ui/dist/radio-ui-v1.jar", "radio-ui/dist/radio-ui-v2.jar"]),
-    ("tv-ui", "电视界面", "tv-ui", [f"tv-ui/dist/{name}.jar" for name in ("builtin", "ui2", "ui3", "ui4", "ui5")]),
 ]
 METADATA = {
     "channel": "channel-plugin.json", "python": "python-plugin.json", "tvbus": "tvbus-plugin.json",
-    "radio-ui": "radio-ui.json", "archive": "radio-ui.json", "tv-ui": "tv-ui.json",
 }
 
 
@@ -82,7 +75,6 @@ def write_playlist(path, entries):
             query = {"sha256": item["sha256"]}
             if entry["id"] == "tvbox":
                 query["url"] = "http://www.xn--sss604efuw.cc/tv"
-            # Folia without audio opens its search UI; never ship a fake song URL.
             lines.extend([f'#EXTINF:-1 group-title="插件",{name}',
                           item["url"] + "?" + urlencode(query)])
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +102,8 @@ def prepare(tag, output):
     if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
         raise ValueError("Use a release tag like v1.0.0")
     output.mkdir(parents=True, exist_ok=True)
+    if any(output.iterdir()):
+        raise ValueError("Release output must be empty; use a new directory to avoid publishing stale files")
     entries, assets = {}, {}
     for plugin, name, kind, paths in PLUGINS:
         versions = []
@@ -125,21 +119,15 @@ def prepare(tag, output):
         entries[plugin] = {"id": plugin, "name": name, "kind": kind, "artifacts": versions}
     for filename, source in assets.items():
         shutil.copyfile(source, output / filename)
-    catalog = [entry for entry in entries.values() if entry["kind"] not in {"radio-ui", "archive", "tv-ui"}]
+    catalog = list(entries.values())
     write_json(output / "plugins.json", {"schema": 1, "release": tag, "plugins": catalog})
-    styles = []
-    for style in ("classic", "optical"):
-        entry = entries["radio-" + style]
-        item = entry["artifacts"][0]
-        styles.append({"id": style, "name": entry["name"], "style": style, "url": item["url"], "sha256": item["sha256"]})
-    write_json(output / "radio-ui.json", {"schema": 1, "styles": styles})
 
     for plugin, entry in entries.items():
         if entry["kind"] != "channel":
             continue
         write_playlist(output / f"{plugin}.m3u", [entry])
     write_playlist(output / "all.m3u", entries.values())
-    names = sorted(list(assets) + ["plugins.json", "radio-ui.json", "all.m3u"]
+    names = sorted(list(assets) + ["plugins.json", "all.m3u"]
                    + [plugin + ".m3u" for plugin, entry in entries.items() if entry["kind"] == "channel"])
     sums = "".join(f"{digest(output / name)}  {name}\n" for name in names)
     (output / "SHA256SUMS").write_bytes(sums.encode("ascii"))

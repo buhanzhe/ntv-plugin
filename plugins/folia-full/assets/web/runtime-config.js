@@ -1,1 +1,0 @@
-window.__FOLIA_RUNTIME_CONFIG__=window.__FOLIA_RUNTIME_CONFIG__||{};

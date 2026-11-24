@@ -115,7 +115,7 @@ python plugins/bl/build.py --sdk D:/android/sdk --java-home C:/path/to/jdk8
 也支持新版 JDK：自动使用 `javac --release 8`，避免 Java 9 ByteBuffer 方法泄漏导致 Android 7.1 直播弹幕崩溃。
 `verify_artifact.py` 会检查最终 DEX 中的方法描述符；本轮发布 JAR 使用 JDK 8 构建。
 
-输出 `dist/bl.jar`、`dist/bl.sha256`、`dist/example.m3u`。宿主接口为 API 1 的可选扩展，既有 Folia BrowserHost/DirectoryHost 不变。插件可使用 M3U 查询参数 `apiOrigin`、`passportOrigin`、`liveOrigin` 指向本地测试接口；正式订阅不包含这些参数。
+输出 `dist/bl.jar`、`dist/bl.sha256`、`dist/example.m3u`。宿主接口为 API 1 的可选扩展，保持 BrowserHost/DirectoryHost 兼容。插件可使用 M3U 查询参数 `apiOrigin`、`passportOrigin`、`liveOrigin` 指向本地测试接口；正式订阅不包含这些参数。
 
 ## 重复测试与诊断验证
 

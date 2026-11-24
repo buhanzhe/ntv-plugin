@@ -1,1 +1,0 @@
-System.register(["./bootstrap-0rfQVHim.js"],function(_export,_context){"use strict";var e,t;return{setters:[function(_bootstrap0rfQVHimJs){e=_bootstrap0rfQVHimJs.fr;t=_bootstrap0rfQVHimJs.vr;}],execute:function(){_export("getNavidromeConfig",e);_export("navidromeApi",t);}};});

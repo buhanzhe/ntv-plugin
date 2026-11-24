@@ -1,1 +1,0 @@
-System.register(["../lucide-icons-gYazRYpo.js"],function(_export,_context){"use strict";var e,t,n;return{setters:[function(_lucideIconsGYazRYpoJs){e=_lucideIconsGYazRYpoJs.Ns;}],execute:function(){_export("__iconData",t={name:`signal-zero`,size:24,node:[[`path`,{d:`M2 20h.01`,key:`4haj6o`}]]});t.node;_export("default",n=e(t));}};});

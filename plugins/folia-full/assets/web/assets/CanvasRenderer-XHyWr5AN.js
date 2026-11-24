@@ -1,1 +1,0 @@
-System.register(["./lib-Cj6sOhjQ.js"],function(_export,_context){"use strict";var e;return{setters:[function(_libCj6sOhjQJs){e=_libCj6sOhjQJs.CanvasRenderer;}],execute:function(){_export("CanvasRenderer",e);}};});
