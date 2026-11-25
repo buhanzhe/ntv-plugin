@@ -13,6 +13,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.widget.Button;
+import android.view.Gravity;
 import android.widget.EditText;
 import android.widget.GridView;
 import android.widget.ImageView;
@@ -26,7 +27,6 @@ final class BoxUi extends BlUi {
     private final BoxTypography typography;
     private BoxGlass material;
     void material(BoxGlass value){material=value;}
-    Drawable navigationFocus(Button button){return material==null?navigationFocus():material.control(button,px(22),3);}
     Drawable primaryFocus(Button button){return material==null?primaryFocus():material.control(button,px(28),2);}
     android.content.res.ColorStateList controlText(){
         return android.content.res.ColorStateList.valueOf(TEXT);
@@ -82,16 +82,6 @@ final class BoxUi extends BlUi {
         return states;
     }
 
-    StateListDrawable navigationFocus() {
-        StateListDrawable states = new StateListDrawable();
-        GradientDrawable focused = glass(0xcc536e84, 22);
-        focused.setStroke(Math.max(2, px(2)), ACCENT);
-        states.addState(new int[]{android.R.attr.state_focused}, focused);
-        GradientDrawable selected=glass(0xcc697984,22);selected.setStroke(Math.max(1,px(1)),0xbbdae6ee);
-        states.addState(new int[]{android.R.attr.state_selected}, selected);
-        states.addState(new int[]{}, fill(0x00000000, 22)); return states;
-    }
-
     StateListDrawable primaryFocus() {
         StateListDrawable states=new StateListDrawable();
         GradientDrawable focused=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xe6b7c4cf,0xc6788897,0xdd425665});
@@ -119,8 +109,14 @@ final class BoxUi extends BlUi {
         b.setText(value); b.setTextColor(TEXT); b.setAllCaps(false);
         if (home) b.setTextColor(new android.content.res.ColorStateList(
                 new int[][]{{android.R.attr.state_selected}, {}}, new int[]{HOME_GOLD, TEXT}));
-        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(28));
-        b.setPadding(px(18), 0, px(18), px(6)); b.setMinWidth(0); b.setMinimumWidth(0);
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(home ? 24 : 28));
+        b.setGravity(Gravity.CENTER);
+        b.setIncludeFontPadding(false);
+        b.setSingleLine(true);
+        b.setMaxWidth(px(180));
+        b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        int inset = px(home ? 11 : 18);
+        b.setPadding(inset, 0, inset, 0); b.setMinWidth(0); b.setMinimumWidth(0);
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[]{android.R.attr.state_focused}, capsuleGlass(0x66566e83));
         states.addState(new int[]{}, fill(0x00000000, 0)); b.setBackgroundDrawable(states); return b;
@@ -130,7 +126,10 @@ final class BoxUi extends BlUi {
         Button b = super.button(label);
         b.setAllCaps(false);
         b.setTextColor(TEXT);
-        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(23));
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(24));
+        b.setGravity(Gravity.CENTER);
+        b.setIncludeFontPadding(false);
+        b.setPadding(px(capsule ? 14 : 9), 0, px(capsule ? 14 : 9), 0);
         b.setEllipsize(android.text.TextUtils.TruncateAt.END);
         StateListDrawable background = new StateListDrawable();
         GradientDrawable focused = capsule(new int[]{0x993a454a, 0x80202b31});

@@ -52,7 +52,8 @@ final class BoxHomePage extends FrameLayout {
         setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
         setOnClickListener(view -> {
             focusFeature();
-            if (!items.get(selected).playable) actions.open(selected);
+            if (items.get(selected).playable) actions.play(selected);
+            else actions.open(selected);
             restartRotation();
         });
         setOnLongClickListener(view -> {
@@ -64,12 +65,13 @@ final class BoxHomePage extends FrameLayout {
 
         feature = ui.vertical();
         title = ui.displayTitle("");
+        title.getPaint().setFakeBoldText(true);
         title.setTextColor(BoxUi.HOME_GOLD);
         title.setShadowLayer(ui.px(8), 0, ui.px(2), 0xa0000000);
         title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
         feature.addView(title, new LinearLayout.LayoutParams(-1, -2));
-        facts = featureLabel(22, 1, BoxUi.TEXT, 12);
+        facts = featureLabel(22, 1, BoxUi.TEXT, 22);
         description = featureLabel(25, 2, BoxUi.TEXT, 12);
         hint = featureLabel(18, 1, BoxUi.SUB, 24);
 
@@ -123,7 +125,8 @@ final class BoxHomePage extends FrameLayout {
         int width = MeasureSpec.getSize(widthSpec), height = MeasureSpec.getSize(heightSpec);
         LayoutParams textArea = (LayoutParams) feature.getLayoutParams();
         textArea.width = Math.min(Math.round(width * .60f), ui.px(740));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.min(ui.px(98), Math.round(height * .17f)));
+        int titleSize = Math.min(ui.px(98), Math.round(height * .17f)) - ui.px(2);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(1, titleSize));
         super.onMeasure(widthSpec, heightSpec);
     }
 
@@ -133,8 +136,7 @@ final class BoxHomePage extends FrameLayout {
         title.setText(item.name);
         facts.setText(item.facts);
         facts.setVisibility(item.facts.isEmpty() ? GONE : VISIBLE);
-        description.setText(item.description);
-        description.setVisibility(item.description.isEmpty() ? GONE : VISIBLE);
+        updateDescription(position, item.description);
         hint.setText(item.playable ? "长按 OK 播放" : "按 OK 打开");
         int total = items.size();
         counter.setText((position + 1) + " / " + total);
@@ -146,6 +148,12 @@ final class BoxHomePage extends FrameLayout {
 
     int selected() {
         return selected;
+    }
+
+    void updateDescription(int position, String summary) {
+        if (position != selected) return;
+        description.setText(summary);
+        description.setVisibility(summary.isEmpty() ? GONE : VISIBLE);
     }
 
     boolean focusFeature() {
@@ -170,7 +178,7 @@ final class BoxHomePage extends FrameLayout {
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             boolean click = heldPosition == selected && !event.isCanceled();
             cancelHold();
-            if (click) performClick();
+            if (click && !items.get(selected).playable) performClick();
             restartRotation();
         }
         return true;

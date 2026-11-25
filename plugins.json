@@ -26,8 +26,8 @@
         {
           "file": "tvbox.jar",
           "url": "https://github.com/buhanzhe/ntv-plugin/releases/download/v1.0.5/tvbox.jar",
-          "sha256": "206d160170d79616619960b395629807b12804447bf49ad92c357676e8fda537",
-          "bytes": 1126607,
+          "sha256": "293627932ae15ad797f29f1bf91d2216f88b0f81431a3b4b5ccccd90361814c3",
+          "bytes": 1130004,
           "version": "7",
           "minSdk": 14,
           "abis": []

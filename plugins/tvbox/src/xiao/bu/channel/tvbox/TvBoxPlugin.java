@@ -3,7 +3,6 @@ package xiao.bu.channel.tvbox;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
-import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -35,7 +34,6 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,20 +57,9 @@ import xiao.bu.tv.jar.ChannelPlugin;
 public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePage {
     private static final int VIDEO_COLUMNS = 4;
     private static final int MAX_HISTORY = 16;
+    private static final int HEADER_ITEM_HEIGHT = 48;
 
-    private enum Tab {
-        SITES("站点", android.R.drawable.ic_menu_agenda),
-        HOME("影视", android.R.drawable.ic_menu_view),
-        CATEGORIES("分类", android.R.drawable.ic_menu_sort_by_size),
-        SEARCH("搜索", android.R.drawable.ic_menu_search);
-
-        final String label;
-        final int icon;
-        Tab(String label, int icon) {
-            this.label = label;
-            this.icon = icon;
-        }
-    }
+    private enum Tab { SITES, HOME, CATEGORIES, SEARCH }
 
     private interface Load { Runnable run() throws Exception; }
     private interface Submit { void accept(String text); }
@@ -160,6 +147,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private final ThreadPoolExecutor recommendations=new ThreadPoolExecutor(2,2,10,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(2));
     private final List<Future<?>> recommendationJobs=new ArrayList<>();
     private final Set<BoxSource> recommendationSessions=Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<BoxSource,Boolean>());
+    private Runnable previewRequest;
+    private Future<?> previewJob;
+    private BoxSource previewSession;
     private final BoxDataCache pages=new BoxDataCache();
     private int recommendationEpoch;
     private final int searchConcurrency = android.os.Build.VERSION.SDK_INT < 21 ? 2 : 3;
@@ -168,7 +158,6 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private final Map<String, SiteHome> homes = new LinkedHashMap<String, SiteHome>(8, .75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, SiteHome> entry) { return size() > 8; }
     };
-    private final Map<Tab, Button> navigation = new EnumMap<>(Tab.class);
     private final ArrayDeque<Screen> history = new ArrayDeque<>();
     private final Map<String, JSONObject> selectedFilters = new HashMap<>();
     private BoxUi ui;
@@ -182,12 +171,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private ImageView backdropArt;
     private ImageView ambientArt;
     private View backdropShade;
-    private BoxGlass sidebarGlass;
+    private BoxGlass controlGlass;
     private String backdropKey="";
     private int backdropGeneration;
     private BoxDashPlayer dashPlayer;
     private BoxSniffer sniffer;
-    private LinearLayout root, body, actions, sideNavigation, page;
+    private LinearLayout root, body, actions;
     private TextView heading, status;
     private HorizontalScrollView categoryTabs;
     private LinearLayout categoryButtons;
@@ -298,19 +287,18 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         root.setBaselineAligned(false);
         root.setBackgroundColor(0x00000000);
         root.setPadding(ui.px(24), ui.px(32), ui.px(32), ui.px(24));
-        boolean compact = context.getResources().getDisplayMetrics().widthPixels < ui.px(960);
-        sideNavigation = sidebar();
-        root.addView(sideNavigation, new LinearLayout.LayoutParams(ui.px(compact ? 138 : 170), -1));
-        page = ui.vertical();
-        page.setPadding(ui.px(28), 0, 0, 0);
+        LinearLayout page = ui.vertical();
+        controlGlass = new BoxGlass(page, container, ui.px(28), Math.max(1, ui.px(1)));
+        ui.material(controlGlass);
         root.addView(page, new LinearLayout.LayoutParams(0, -1, 1));
         LinearLayout header = ui.horizontal();
+        header.setBaselineAligned(false);
         homeSite = ui.homeButton("站点  ⌄", true);
         homeSite.setContentDescription("切换站点");
         homeSite.setMaxWidth(ui.px(215));
         homeSite.setOnClickListener(view -> openHomeStations());
-        LinearLayout.LayoutParams stationSize = new LinearLayout.LayoutParams(-2, ui.px(43));
-        stationSize.rightMargin = ui.px(32);
+        LinearLayout.LayoutParams stationSize = new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT));
+        stationSize.rightMargin = ui.px(20);
         header.addView(homeSite, stationSize);
         heading = ui.title("");
         heading.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.px(30));
@@ -319,10 +307,14 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         header.addView(heading, new LinearLayout.LayoutParams(0, ui.px(56), 1));
         categoryTabs = new HorizontalScrollView(context);
         categoryTabs.setHorizontalScrollBarEnabled(false);
+        categoryTabs.setOverScrollMode(View.OVER_SCROLL_NEVER);
         categoryButtons = ui.horizontal();
+        categoryButtons.setBaselineAligned(false);
         categoryTabs.addView(categoryButtons);
         categoryTabs.setVisibility(View.GONE);
-        header.addView(categoryTabs, new LinearLayout.LayoutParams(0, ui.px(56), 1));
+        LinearLayout.LayoutParams tabsSize = new LinearLayout.LayoutParams(0, ui.px(HEADER_ITEM_HEIGHT), 1);
+        tabsSize.rightMargin = ui.px(12);
+        header.addView(categoryTabs, tabsSize);
         actions = ui.horizontal();
         header.addView(actions, new LinearLayout.LayoutParams(-2, -2));
         homeSearch = homeHeaderAction(header, "搜索", 3, () -> switchTab(Tab.SEARCH));
@@ -332,8 +324,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         linkHomeHeader(homeFavorites);
         TextView clock = ui.text("", 24, BoxUi.TEXT);
         clock.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        clock.setPadding(ui.px(16), 0, 0, 0);
-        header.addView(clock, new LinearLayout.LayoutParams(ui.px(88), ui.px(56)));
+        clock.setPadding(ui.px(12), 0, 0, 0);
+        header.addView(clock, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
         Runnable updateClock = new Runnable() {
             public void run() {
                 if (disposed) return;
@@ -386,38 +378,6 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private static boolean storedAuthorization(android.content.SharedPreferences preferences, String key) {
         try { return !preferences.getString(key, "").trim().isEmpty(); }
         catch (ClassCastException unexpectedType) { return false; }
-    }
-
-    private LinearLayout sidebar() {
-        LinearLayout bar = ui.vertical();
-        bar.setPadding(ui.px(12), ui.px(30), ui.px(12), ui.px(24));
-        sidebarGlass=new BoxGlass(bar,container,ui.px(28),Math.max(1,ui.px(1)));
-        ui.material(sidebarGlass);
-        bar.setBackgroundDrawable(sidebarGlass);
-        for (Tab tab : new Tab[]{Tab.SEARCH, Tab.HOME, Tab.SITES, Tab.CATEGORIES}) {
-            Button button = ui.button(tab.label);
-            button.setBackgroundDrawable(ui.navigationFocus(button));button.setTextColor(BoxUi.TEXT);
-            button.setAllCaps(false);
-            button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
-            button.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
-            button.setPadding(ui.px(14), ui.px(8), ui.px(8), ui.px(8));
-            Drawable icon = ui.navigationIcon(tab.ordinal());
-            icon.setColorFilter(BoxUi.TEXT, PorterDuff.Mode.SRC_IN);
-            icon.setBounds(0, 0, ui.px(30), ui.px(30));
-            button.setCompoundDrawables(icon, null, null, null);
-            button.setCompoundDrawablePadding(ui.px(12));
-            button.setOnClickListener(view -> switchTab(tab));
-            button.setOnKeyListener((view, code, event) -> {
-                if (code != KeyEvent.KEYCODE_DPAD_RIGHT || primary == null) return false;
-                if (event.getAction() == KeyEvent.ACTION_DOWN) primary.requestFocus();
-                return true;
-            });
-            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, ui.px(80));
-            size.bottomMargin = ui.px(12);
-            bar.addView(button, size);
-            navigation.put(tab, button);
-        }
-        return bar;
     }
 
     private void switchTab(Tab tab) {
@@ -656,7 +616,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             hasFeature |= isMediaEntry(item);
             items.add(new BoxHomePage.Item(videoName(item),
                     metadata(item, "vod_year", "vod_class", "vod_remarks"),
-                    BlUi.plain(item.optString("vod_content")).trim(),
+                    synopsis(item),
                     canPlayDirectly(item)));
         }
         if (items.isEmpty()) return false;
@@ -670,11 +630,11 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 JSONObject item = videos.get(position);
                 featuredSite = model.site;
                 featuredItem = item;
-                backdrop(artwork(model.site, item, "vod_backdrop", "vod_pic_slide", "vod_fanart",
-                        "backdrop", "vod_pic"), true);
+                showHomePreview(owner, model.site, item, position);
             }
 
             @Override public void play(int position) {
+                cancelHomePreview();
                 openVideo(model.site, videos.get(position), true);
             }
 
@@ -684,6 +644,88 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         });
         body.addView(homePage, new LinearLayout.LayoutParams(-1, 0, 1));
         return true;
+    }
+
+    private static String synopsis(JSONObject item) {
+        String summary = metadata(item, "vod_content");
+        return summary.isEmpty() ? metadata(item, "vod_blurb") : summary;
+    }
+
+    private void showHomePreview(Screen owner, BoxSource.Site site, JSONObject item, int position) {
+        cancelHomePreview();
+        List<String> pictures = homeArtwork(site, item);
+        backdrop(pictures, true);
+        if (!canPlayDirectly(item) || music(site, item)) return;
+        boolean needsSynopsis = synopsis(item).isEmpty();
+        String key = siteKey(site) + "\ndetail\n" + item.optString("vod_id");
+        JSONObject cached = pages.get(key);
+        if (cached != null) {
+            main.post(() -> applyHomeDetails(owner, site, item, position, pictures, cached));
+            return;
+        }
+        if (!needsSynopsis && pictures.size() > 1) return;
+        previewRequest = () -> {
+            previewRequest = null;
+            if (disposed || screen != owner || featuredItem != item || pending != null || !root.isShown()) return;
+            BoxSource session = source.fork();
+            previewSession = session;
+            try {
+                previewJob = recommendations.submit(() -> {
+                    JSONObject data = null;
+                    try {
+                        session.select(site);
+                        data = session.detail(item.optString("vod_id"));
+                    } catch (Exception | LinkageError unavailable) {
+                        // The recommendation remains usable when its details are unavailable.
+                    } finally {
+                        session.close();
+                    }
+                    JSONObject result = data;
+                    main.post(() -> {
+                        if (previewSession != session) return;
+                        previewSession = null;
+                        previewJob = null;
+                        if (result != null) pages.put(key, result);
+                        applyHomeDetails(owner, site, item, position, pictures, result);
+                    });
+                });
+            } catch (java.util.concurrent.RejectedExecutionException busy) {
+                session.close();
+                previewSession = null;
+                applyHomeDetails(owner, site, item, position, pictures, null);
+            }
+        };
+        main.postDelayed(previewRequest, 450);
+    }
+
+    private void applyHomeDetails(Screen owner, BoxSource.Site site, JSONObject item, int position,
+            List<String> pictures, JSONObject data) {
+        if (disposed || screen != owner || featuredItem != item || homePage == null) return;
+        JSONArray list = data == null ? null : data.optJSONArray("list");
+        JSONObject details = list == null ? null : list.optJSONObject(0);
+        String summary = synopsis(item);
+        if (summary.isEmpty() && details != null) summary = synopsis(details);
+        if (summary.isEmpty() && isTaisui(item)) {
+            summary = "青年霍哲为给爷爷治病进入一家神秘公司，接连发生的失踪事件将他卷入一桩跨越数十年的阴谋。";
+        }
+        homePage.updateDescription(position, summary.isEmpty() ? "暂无影片简介" : summary);
+        if (details != null) {
+            Set<String> combined = new LinkedHashSet<>(pictures);
+            combined.addAll(homeArtwork(site, details));
+            if (combined.size() > pictures.size()) backdrop(new ArrayList<>(combined), true);
+        }
+    }
+
+    private void cancelHomePreview() {
+        if (previewRequest != null) main.removeCallbacks(previewRequest);
+        previewRequest = null;
+        if (previewSession != null) previewSession.cancelRequests();
+        previewSession = null;
+        if (previewJob != null) {
+            previewJob.cancel(true);
+            recommendations.purge();
+        }
+        previewJob = null;
     }
 
     private static boolean canPlayDirectly(JSONObject item) {
@@ -701,7 +743,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return BlUi.plain(site).replaceFirst("^[^\\p{L}\\p{N}]+", "").split("[|｜丨┃│¦]", 2)[0].trim();
     }
 
-    private void categoryHeader(SiteHome model, String selected) {
+    private Button categoryHeader(SiteHome model, String selected) {
         heading.setVisibility(View.GONE);
         categoryTabs.setVisibility(View.VISIBLE);
         boolean home = screen.tab == Tab.HOME && screen.landing;
@@ -709,7 +751,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         recommended.setSelected(selected.isEmpty());
         recommended.setOnClickListener(view -> { if (!home && pending == null) openSite(model.site); });
         if (home) linkHomeHeader(recommended);
-        categoryButtons.addView(recommended, new LinearLayout.LayoutParams(-2, ui.px(50)));
+        categoryButtons.addView(recommended, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
+        Button active = recommended;
         for (int i = 0; model.categories != null && i < Math.min(20, model.categories.length()); i++) {
             JSONObject item = model.categories.optJSONObject(i);
             if (item == null || item.optString("type_id").isEmpty()) continue;
@@ -717,9 +760,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             Button category = ui.categoryButton(name, home);
             if (home) linkHomeHeader(category);
             category.setSelected(id.equals(selected));
+            if (category.isSelected()) active = category;
             category.setOnClickListener(view -> listing(model.site, name, id, "", 1, true));
-            categoryButtons.addView(category, new LinearLayout.LayoutParams(-2, ui.px(50)));
+            categoryButtons.addView(category, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
         }
+        Button selectedButton = active;
+        categoryTabs.post(() -> {
+            if (selectedButton.getParent() == categoryButtons && !categoryTabs.hasFocus()) {
+                categoryTabs.scrollTo(Math.max(0, selectedButton.getRight() - categoryTabs.getWidth()), 0);
+            }
+        });
+        return active;
     }
 
     private FrameLayout featurePanel(BoxSource.Site site, JSONObject video, String actionLabel, Runnable open) {
@@ -920,7 +971,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             screen.selection = index;
             SearchHit hit = run.hits.get(index); detail(hit.site, hit.item);
         });
-        addGrid(body, cards, VIDEO_COLUMNS);
+        addGrid(body, cards);
         searchStatus(run);
     }
     private void searchStatus(SearchRun run) {
@@ -969,43 +1020,116 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         catch(Exception invalid){message("筛选条件无效");return;}
         String cacheKey=siteKey(site)+"\n"+type+"\n"+page+"\n"+values;
         JSONObject ready=search.isEmpty()?pages.get(cacheKey):null;
-        if(ready!=null){showListing(model,label,type,search,page,ready,push);return;}
+        if(ready!=null){showListing(model,label,type,search,values,page,ready,push);return;}
         load("正在加载列表…", () -> {
             source.select(site);
             JSONObject result=search.isEmpty()?source.category(type,page,values):source.search(search,page);
-            return () -> {if(search.isEmpty())pages.put(cacheKey,result);showListing(model,label,type,search,page,result,push);};
+            return () -> {if(search.isEmpty())pages.put(cacheKey,result);showListing(model,label,type,search,values,page,result,push);};
         });
     }
-    private void showListing(SiteHome model,String label,String type,String search,int page,JSONObject result,boolean push){
-                BoxSource.Site site=model.site;JSONObject filters=model.filters;Tab tab=search.isEmpty()?Tab.CATEGORIES:Tab.SEARCH;
-                JSONArray items=result.optJSONArray("list");int pageCount=result.optInt("pagecount",items==null||items.length()==0?page:page+1);
-                currentSite = model;
-                show(new Screen(tab, label, false, () -> {
-                    if (search.isEmpty()) {
-                        categoryHeader(model, type);
-                        LinearLayout toolbar=ui.horizontal();TextView section=ui.title(label.equals("电影")?"全部电影":label);
-                        toolbar.addView(section,new LinearLayout.LayoutParams(0,ui.px(54),1));body.addView(toolbar);
-                        int before=body.getChildCount();filterBar(site,label,type,filters);
-                        if(body.getChildCount()>before){View filtersView=body.getChildAt(before);filtersView.setVisibility(View.GONE);
-                            action(toolbar,"筛选",()->filtersView.setVisibility(filtersView.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));}
+    private void showListing(SiteHome model, String label, String type, String search,
+            JSONObject filters, int page, JSONObject result, boolean push) {
+        BoxSource.Site site = model.site;
+        boolean category = search.isEmpty();
+        List<JSONObject> rows = videoItems(result.optJSONArray("list"));
+        Set<String> seen = new HashSet<>();
+        for (JSONObject row : rows) seen.add(videoKey(row));
+        int[] nextPage = {page + 1};
+        int[] lastPage = {result.optInt("pagecount", page + 1)};
+        currentSite = model;
+        show(new Screen(category ? Tab.CATEGORIES : Tab.SEARCH, label, false, () -> {
+            if (category) {
+                Button active = categoryHeader(model, type);
+                View filter = filterBar(site, label, type, model.filters);
+                if (filter != null) {
+                    filter.setVisibility(View.GONE);
+                    active.setOnLongClickListener(view -> {
+                        filter.setVisibility(filter.isShown() ? View.GONE : View.VISIBLE);
+                        return true;
+                    });
+                }
+            }
+            if (rows.isEmpty()) {
+                message("没有匹配内容");
+                return;
+            }
+            GridView cards = videoGrid(site, rows, true);
+            Runnable more = () -> {
+                if (pending != null || cards != grid || nextPage[0] > lastPage[0]) return;
+                int requested = nextPage[0];
+                boolean remote = cards.hasFocus() && !cards.isInTouchMode();
+                String key = siteKey(site) + "\n" + type + "\n" + requested + "\n" + filters;
+                load("正在加载列表…", () -> {
+                    JSONObject data = category ? pages.get(key) : null;
+                    if (data == null) {
+                        source.select(site);
+                        data = category ? source.category(type, requested, filters) : source.search(search, requested);
                     }
-                    if (page > 1) action(actions, "上一页", () -> listing(site, label, type, search, page - 1, false));
-                    if (page < pageCount) action(actions, "下一页", () -> listing(site, label, type, search, page + 1, false));
-                    message(videos(site, items) ? "第 " + page + " 页" : "没有匹配内容");
-                }), push);
+                    JSONObject response = data;
+                    List<JSONObject> incoming = videoItems(data.optJSONArray("list"));
+                    return () -> {
+                        if (category) pages.put(key, response);
+                        int before = rows.size();
+                        for (JSONObject row : incoming) {
+                            if (seen.add(videoKey(row))) rows.add(row);
+                        }
+                        nextPage[0] = requested + 1;
+                        lastPage[0] = before == rows.size() ? requested : response.optInt("pagecount", requested + 1);
+                        if (rows.size() == before) return;
+                        ((BaseAdapter) cards.getAdapter()).notifyDataSetChanged();
+                        if (remote) cards.setSelection(before);
+                    };
+                });
+            };
+            cards.setOnKeyListener((view, code, event) -> {
+                int selected = cards.getSelectedItemPosition();
+                int columns = Math.max(1, cards.getNumColumns());
+                if (code != KeyEvent.KEYCODE_DPAD_DOWN || event.getAction() != KeyEvent.ACTION_DOWN
+                        || event.getRepeatCount() != 0 || selected < 0
+                        || selected / columns < (rows.size() - 1) / columns
+                        || nextPage[0] > lastPage[0]) return false;
+                more.run();
+                return true;
+            });
+            cards.setOnTouchListener(new View.OnTouchListener() {
+                private float down;
+
+                @Override public boolean onTouch(View view, android.view.MotionEvent event) {
+                    if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) down = event.getY();
+                    else if (event.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                            && down - event.getY() > ui.px(32) && !cards.canScrollVertically(1)) more.run();
+                    return false;
+                }
+            });
+        }), push);
+    }
+
+    private static String videoKey(JSONObject item) {
+        String id = item.optString("vod_id");
+        return id.isEmpty() ? videoName(item) : id;
     }
 
     private boolean videos(BoxSource.Site site, JSONArray items) { return videos(site, items, true); }
-    private boolean videos(BoxSource.Site site, JSONArray items, boolean poster) {
+    private static List<JSONObject> videoItems(JSONArray items) {
         List<JSONObject> videos = new ArrayList<>();
         for (int i = 0; items != null && i < Math.min(160, items.length()); i++) {
             JSONObject item = items.optJSONObject(i);
             if (item != null && (!item.optString("vod_id").isEmpty() || !item.optString("vod_name").isEmpty())) videos.add(item);
         }
+        return videos;
+    }
+
+    private boolean videos(BoxSource.Site site, JSONArray items, boolean poster) {
+        List<JSONObject> videos = videoItems(items);
         if (videos.isEmpty()) return false;
+        videoGrid(site, videos, poster);
+        return true;
+    }
+
+    private GridView videoGrid(BoxSource.Site site, List<JSONObject> videos, boolean poster) {
         if (poster) {
             String firstCover = artwork(site, videos.get(0));
-            if (!firstCover.isEmpty()) backdrop(firstCover, false);
+            if (!firstCover.isEmpty()) backdrop(Collections.singletonList(firstCover), false);
         }
         int columns = poster ? 5 : VIDEO_COLUMNS;
         GridView cards = ui.grid(columns);cards.setSelector(ui.fill(0,0));
@@ -1031,8 +1155,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             JSONObject item = videos.get(index);
             openVideo(site, item);
         });
-        addGrid(body, cards, columns);
-        return true;
+        addGrid(body, cards);
+        return cards;
     }
 
     private JSONObject filterValues(BoxSource.Site site, String category, JSONObject filters) throws Exception {
@@ -1054,14 +1178,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return new JSONObject(selected.toString());
     }
 
-    private void filterBar(BoxSource.Site site, String label, String category, JSONObject filters) {
+    private View filterBar(BoxSource.Site site, String label, String category, JSONObject filters) {
         JSONArray fields = filters == null ? null : filters.optJSONArray(category);
-        if (fields == null || fields.length() == 0) return;
+        if (fields == null || fields.length() == 0) return null;
         HorizontalScrollView scroll = new HorizontalScrollView(context);
         scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout row = ui.horizontal();
         scroll.addView(row);
-        body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         JSONObject selected = selectedFilters.get(site.key + "\n" + category);
         for (int i = 0; i < Math.min(20, fields.length()); i++) {
             JSONObject field = fields.optJSONObject(i);
@@ -1090,6 +1213,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 show(new Screen(Tab.CATEGORIES, "选择" + name, false, () -> choices(body, choices, 6, 48)), true);
             });
         }
+        if (row.getChildCount() == 0) return null;
+        body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+        return scroll;
     }
 
     private void runSiteAction(BoxSource.Site site, String command, boolean cloudLogin) {
@@ -1371,7 +1497,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         });
         if(files)options.setOnItemLongClickListener((owner,view,position,id)->{new android.app.AlertDialog.Builder(context).setTitle("完整文件名").setMessage(items.get(position).title).setPositiveButton("关闭",null).show();return true;});
         fullTitle.setText(items.get(Math.min(screen.selection, items.size() - 1)).title);
-        addGrid(parent, options, columns);
+        addGrid(parent, options);
     }
 
     private void play(BoxSource.Site site, String flag, String id, String title, PlayLine line, int index) {
@@ -1540,20 +1666,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             screen.selection = index;
             items.get(index).action.run();
         });
-        addGrid(parent, options, columns);
+        addGrid(parent, options);
     }
 
-    private void addGrid(LinearLayout parent, GridView content, int columns) {
+    private void addGrid(LinearLayout parent, GridView content) {
         grid = content;
         primary = grid;
-        content.setOnKeyListener((view, code, event) -> {
-            if (screen.tab == Tab.HOME && screen.landing) return false;
-            if (code != KeyEvent.KEYCODE_DPAD_LEFT || Math.max(0, content.getSelectedItemPosition()) % Math.max(1, content.getNumColumns()) != 0) {
-                return false;
-            }
-            if (event.getAction() == KeyEvent.ACTION_DOWN) navigation.get(screen.tab).requestFocus();
-            return true;
-        });
         parent.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
@@ -1566,7 +1684,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             button.setCompoundDrawablePadding(ui.px(7));
         }
         button.setOnClickListener(view -> action.run());
-        header.addView(button, new LinearLayout.LayoutParams(-2, ui.px(44)));
+        header.addView(button, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
         return button;
     }
 
@@ -1683,7 +1801,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private Button action(LinearLayout parent, String label, Runnable run) {
         Button button = ui.button(label);
-        int icon=label.equals("返回")?5:label.startsWith("▶")?7:label.equals("搜索同名")?3:label.equals("筛选")?8:-1;
+        int icon=label.startsWith("▶")?7:label.equals("搜索同名")?3:-1;
         if(icon>=0){
             button.setText(label.startsWith("▶")?label.substring(1).trim():label);
             Drawable glyph=ui.actionIcon(icon);glyph.setBounds(0,0,ui.px(24),ui.px(24));
@@ -1699,6 +1817,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void show(Screen next, boolean push) {
+        cancelHomePreview();
         if(screen!=null&&screen!=next)cancelRecommendations();
         if (screen != null && screen != next) cancelSearch(screen.search);
         if (push && screen != null) {
@@ -1708,13 +1827,10 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         }
         screen = next;
         boolean home = next.tab == Tab.HOME && next.landing;
-        sideNavigation.setVisibility(home ? View.GONE : View.VISIBLE);
         homeSite.setVisibility(home ? View.VISIBLE : View.GONE);
-        homeSearch.setVisibility(home ? View.VISIBLE : View.GONE);
+        homeSearch.setVisibility(home || next.tab == Tab.SITES ? View.VISIBLE : View.GONE);
         homeFavorites.setVisibility(home ? View.VISIBLE : View.GONE);
-        root.setPadding(ui.px(home ? 34 : 24), ui.px(home ? 15 : 32),
-                ui.px(home ? 34 : 32), ui.px(24));
-        page.setPadding(home ? 0 : ui.px(28), 0, 0, 0);
+        root.setPadding(ui.px(34), ui.px(15), ui.px(34), ui.px(24));
         homeSite.setText(currentSite == null ? "站点  ⌄" : shortSiteName(currentSite.site.name) + "  ⌄");
         ambientBackdrop();
         if (next.tab == Tab.SITES) stations = next;
@@ -1730,13 +1846,6 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         featuredItem = null;
         grid = null;
         primary = null;
-        boolean browsing = next.tab != Tab.SITES;
-        for (Map.Entry<Tab, Button> entry : navigation.entrySet()) {
-            Tab tab = entry.getKey();
-            entry.getValue().setVisibility(browsing || tab == Tab.SITES || tab == Tab.SEARCH ? View.VISIBLE : View.GONE);
-            entry.getValue().setSelected(tab == next.tab);
-        }
-        if (!history.isEmpty() && !(next.tab==Tab.HOME&&next.landing)) action(actions, "返回", this::onBack);
         next.render.run();
         focusContent();
         root.post(()->{if(!disposed&&screen==next&&root.isShown()&&dashPlayer==null)focusContent();});
@@ -1748,7 +1857,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         backdropShade.setVisibility(View.VISIBLE);
     }
 
-    private void backdrop(String url,boolean cinema) {
+    private void backdrop(List<String> urls,boolean cinema) {
         if(cinema){
             backdropArt.setVisibility(View.VISIBLE);
             backdropShade.setBackgroundDrawable(BoxBackdrop.scrim(true));
@@ -1756,23 +1865,25 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         }else ambientBackdrop();
         int edge = cinema ? Math.min(1440, Math.round(Math.max(context.getResources().getDisplayMetrics().widthPixels,
                 context.getResources().getDisplayMetrics().heightPixels) * 1.25f)) : art.thumbnailEdge();
-        String key = edge + "\n" + url;
+        String key = cinema + "\n" + edge + "\n" + TextUtils.join("\n", urls);
         if (key.equals(backdropKey) && backdropArt.getDrawable() != null) return;
         backdropKey = key;
         int request = ++backdropGeneration;
-        if (cinema && url.isEmpty()) {
+        if (cinema && urls.isEmpty()) {
             ambientArt.setTag(null);
             ambientArt.setImageDrawable(null);
         }
-        art.load(backdropArt, url, edge, bitmap -> {
-            if (url.equals(ambientArt.getTag())) return;
+        BoxArt.Ready ready = bitmap -> {
+            if (key.equals(ambientArt.getTag())) return;
             art.frost(bitmap, blurred -> {
                 if (disposed || request != backdropGeneration) return;
-                ambientArt.setTag(url);
+                ambientArt.setTag(key);
                 ambientArt.setImageBitmap(blurred);
-                sidebarGlass.image(blurred);
+                controlGlass.image(blurred);
             });
-        });
+        };
+        if (cinema) art.loadBackdrop(backdropArt, urls, edge, ready);
+        else art.load(backdropArt, urls.isEmpty() ? "" : urls.get(0), edge, ready);
     }
 
     private void saveSelection() {
@@ -1790,8 +1901,10 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             grid.requestFocusFromTouch();
             grid.setSelection(Math.min(screen.selection, grid.getCount() - 1));
         } else {
-            View fallback = homeSite.isShown() ? homeSite : navigation.get(screen.tab);
-            fallback.requestFocus();
+            if (homeSite.isShown()) homeSite.requestFocus();
+            else if (categoryTabs.isShown() && categoryButtons.getChildCount() > 0)
+                categoryButtons.getChildAt(0).requestFocus();
+            else if (homeSearch.isShown()) homeSearch.requestFocus();
         }
     }
 
@@ -1940,6 +2053,27 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return artwork(site, item, "vod_pic");
     }
 
+    private List<String> homeArtwork(BoxSource.Site site, JSONObject item) {
+        Set<String> pictures = new LinkedHashSet<>();
+        for (String key : new String[]{"vod_backdrop", "vod_pic_slide", "vod_fanart",
+                "backdrop", "vod_banner", "vod_pic_bg", "vod_pic_thumb", "vod_thumb"}) {
+            String picture = artwork(site, item, key);
+            if (!picture.isEmpty()) pictures.add(picture);
+            if (pictures.size() == 3) break;
+        }
+        // Verified WeTV artwork for the 2026 film, whose feed only exposes a portrait.
+        if (isTaisui(item)) {
+            pictures.add("https://newpic.wetvinfo.com/vpic_cover/z41029wg748/z41029wg748_hz.jpg/1280");
+        }
+        String poster = artwork(site, item);
+        if (!poster.isEmpty()) pictures.add(poster);
+        return new ArrayList<>(pictures);
+    }
+
+    private static boolean isTaisui(JSONObject item) {
+        return "太岁".equals(videoName(item)) && "2026".equals(item.optString("vod_year").trim());
+    }
+
     private String artwork(BoxSource.Site site, JSONObject item, String... keys) {
         for (String key : keys) {
             String picture = item.optString(key).trim();
@@ -1993,6 +2127,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     @Override public void setActive(boolean active) {
+        if (!active) cancelHomePreview();
         if (dashPlayer != null) dashPlayer.setActive(active);
         else if(active)main.post(()->{
             if (!disposed && root.isShown()) {
@@ -2014,6 +2149,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             authorizationPreferences.unregisterOnSharedPreferenceChangeListener(authorizationListener);
         closeDashPlayer();
         if (sniffer != null) sniffer.close();
+        cancelHomePreview();
         cancelRecommendations();recommendations.shutdownNow();homes.clear();pages.clear();
         if (pending != null) cancelPending();
         homeLoads.shutdownNow();

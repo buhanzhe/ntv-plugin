@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.util.LruCache;
 import android.widget.ImageView;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -54,25 +55,29 @@ final class BoxArt {
     }
 
     private final class ArtworkRequest implements Runnable {
-        final String key, url;
+        final String key;
+        final List<String> urls;
         final int edge;
+        final boolean wide;
         final List<Target> targets = new ArrayList<>();
+        volatile boolean abandoned;
 
-        ArtworkRequest(String key, String url, int edge) {
+        ArtworkRequest(String key, List<String> urls, int edge, boolean wide) {
             this.key = key;
-            this.url = url;
+            this.urls = urls;
             this.edge = edge;
+            this.wide = wide;
         }
 
         @Override public void run() {
-            if (closed) return;
+            if (closed || abandoned) return;
             Bitmap bitmap = cache.get(key);
-            if (bitmap == null) bitmap = fetch(url, edge);
-            if (closed) return;
+            if (bitmap == null) bitmap = wide ? fetchWide() : fetch(urls.get(0), edge);
+            if (closed || abandoned) return;
             if (bitmap != null) cache.put(key, bitmap);
             Bitmap result = bitmap;
             main.post(() -> {
-                inFlight.remove(key);
+                if (inFlight.get(key) == this) inFlight.remove(key);
                 if (closed) return;
                 for (Target target : targets) {
                     target.request = null;
@@ -84,6 +89,26 @@ final class BoxArt {
                 }
                 targets.clear();
             });
+        }
+
+        private Bitmap fetchWide() {
+            Bitmap fallback = null;
+            for (String url : urls) {
+                if (abandoned || closed) break;
+                Bitmap bitmap = fetch(url, edge);
+                if (bitmap == null) continue;
+                if (!usableBackdrop(bitmap)) {
+                    bitmap.recycle();
+                } else if (bitmap.getWidth() >= bitmap.getHeight() * 1.25f) {
+                    if (fallback != null) fallback.recycle();
+                    return bitmap;
+                } else if (fallback == null) {
+                    fallback = bitmap;
+                } else {
+                    bitmap.recycle();
+                }
+            }
+            return fallback;
         }
     }
 
@@ -98,18 +123,31 @@ final class BoxArt {
     void load(ImageView view, String url) { load(view,url,thumbnailEdge); }
     void load(ImageView view, String url, int edge) { load(view,url,edge,null); }
     void load(ImageView view, String url, int edge, Ready ready) {
-        load(view,url,edge,ready,0);
+        load(view,Collections.singletonList(url),edge,false,ready,0);
     }
-    private void load(ImageView view,String url,int edge,Ready ready,int retry) {
-        String cacheKey = edge + "\n" + url;
+
+    void loadBackdrop(ImageView view, List<String> urls, int edge, Ready ready) {
+        load(view,urls,edge,true,ready,0);
+    }
+
+    private static boolean usableBackdrop(Bitmap bitmap) {
+        return Math.min(bitmap.getWidth(), bitmap.getHeight()) >= 96;
+    }
+
+    private void load(ImageView view,List<String> urls,int edge,boolean wide,Ready ready,int retry) {
+        String url = urls.isEmpty() ? "" : urls.get(0);
+        String cacheKey = edge + "\n" + (wide ? "wide\n" : "") + TextUtils.join("\n", urls);
         Target previous = requests.get(view);
         if (previous != null && previous.key.equals(cacheKey) && previous.ready == null && ready == null
                 && (previous.request != null || view.getDrawable() != null)) return;
         if (previous != null && previous.request != null) {
             ArtworkRequest old = previous.request;
             old.targets.remove(previous);
-            if (!old.key.equals(cacheKey) && old.targets.isEmpty() && workers.remove(old)) {
-                inFlight.remove(old.key);
+            if (!old.key.equals(cacheKey) && old.targets.isEmpty()) {
+                if (workers.remove(old) || old.wide) {
+                    old.abandoned = true;
+                    inFlight.remove(old.key);
+                }
             }
         }
         Target target = new Target(view, cacheKey, ready);
@@ -121,7 +159,7 @@ final class BoxArt {
         view.setTag(url);
         Bitmap existing = url.isEmpty() ? null : cache.get(cacheKey);
         Bitmap preview=existing;
-        if(preview==null&&edge>thumbnailEdge&&!url.isEmpty())preview=cached(url);
+        if (!wide && preview == null && edge > thumbnailEdge && !url.isEmpty()) preview = cached(url);
         if (preview != null || view.getDrawable() != null) view.setImageBitmap(preview);
         if(preview!=null&&ready!=null)ready.image(preview);
         if (url.isEmpty() || existing != null || closed) return;
@@ -131,7 +169,7 @@ final class BoxArt {
             target.request = running;
             return;
         }
-        ArtworkRequest request = new ArtworkRequest(cacheKey, url, edge);
+        ArtworkRequest request = new ArtworkRequest(cacheKey, urls, edge, wide);
         request.targets.add(target);
         target.request = request;
         inFlight.put(cacheKey, request);
@@ -143,7 +181,7 @@ final class BoxArt {
             if (retry < 3) main.postDelayed(() -> {
                 ImageView image = target.view.get();
                 if (!closed && image != null && requests.get(image) == target) {
-                    load(image, url, edge, ready, retry + 1);
+                    load(image, urls, edge, wide, ready, retry + 1);
                 }
             }, 500L * (retry + 1));
         }

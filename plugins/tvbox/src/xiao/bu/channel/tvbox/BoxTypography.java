@@ -77,7 +77,12 @@ final class BoxTypography {
         Iterator<WeakReference<TextView>> iterator=titles.iterator();
         while(iterator.hasNext()){TextView title=iterator.next().get();if(title==null)iterator.remove();else apply(title);}
     });}
-    private void apply(TextView title){title.setTypeface(face);title.getPaint().setFakeBoldText(false);title.getPaint().setSubpixelText(true);}
+    private void apply(TextView title){
+        boolean bold = title.getPaint().isFakeBoldText();
+        title.setTypeface(face);
+        title.getPaint().setFakeBoldText(bold);
+        title.getPaint().setSubpixelText(true);
+    }
     void title(TextView title){apply(title);titles.add(new WeakReference<>(title));}
     void close(){closed=true;Call pending=call;if(pending!=null)pending.cancel();worker.shutdownNow();main.removeCallbacksAndMessages(null);titles.clear();}
 }
