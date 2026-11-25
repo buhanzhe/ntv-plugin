@@ -22,6 +22,7 @@ import xiao.bu.channel.bl.BlUi;
 /** Native glass styling with bounded, static artwork blur; no frame capture. */
 final class BoxUi extends BlUi {
     static final int TEXT = 0xfff4f8ff, SUB = 0xffb8cbe1, ACCENT = 0xffe7f6ff;
+    static final int HOME_GOLD = 0xffffdfa7;
     private final BoxTypography typography;
     private BoxGlass material;
     void material(BoxGlass value){material=value;}
@@ -101,22 +102,45 @@ final class BoxUi extends BlUi {
     }
 
     Button categoryButton(String value) {
+        return categoryButton(value, false);
+    }
+
+    Button categoryButton(String value, boolean home) {
         Button b = new Button(context) {
             private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas canvas) {
                 super.onDraw(canvas);
                 if (isSelected()) {
-                    line.setColor(TEXT); line.setStrokeWidth(Math.max(2, px(3))); line.setStrokeCap(Paint.Cap.ROUND);
+                    line.setColor(home ? HOME_GOLD : TEXT); line.setStrokeWidth(Math.max(2, px(3))); line.setStrokeCap(Paint.Cap.ROUND);
                     canvas.drawLine(px(16), getHeight()-px(4), getWidth()-px(16), getHeight()-px(4), line);
                 }
             }
         };
         b.setText(value); b.setTextColor(TEXT); b.setAllCaps(false);
+        if (home) b.setTextColor(new android.content.res.ColorStateList(
+                new int[][]{{android.R.attr.state_selected}, {}}, new int[]{HOME_GOLD, TEXT}));
         b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(28));
         b.setPadding(px(18), 0, px(18), px(6)); b.setMinWidth(0); b.setMinimumWidth(0);
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[]{android.R.attr.state_focused}, capsuleGlass(0x66566e83));
         states.addState(new int[]{}, fill(0x00000000, 0)); b.setBackgroundDrawable(states); return b;
+    }
+
+    Button homeButton(String label, boolean capsule) {
+        Button b = super.button(label);
+        b.setAllCaps(false);
+        b.setTextColor(TEXT);
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(23));
+        b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        StateListDrawable background = new StateListDrawable();
+        GradientDrawable focused = capsule(new int[]{0x993a454a, 0x80202b31});
+        focused.setStroke(Math.max(1, px(2)), HOME_GOLD);
+        background.addState(new int[]{android.R.attr.state_focused}, focused);
+        GradientDrawable normal = capsule(new int[]{0x401f3036, 0x35132028});
+        normal.setStroke(Math.max(1, px(2)), 0x45a2abb0);
+        background.addState(new int[]{}, capsule ? normal : fill(0, 0));
+        b.setBackgroundDrawable(background);
+        return b;
     }
 
     android.content.res.ColorStateList episodeText() {
@@ -153,7 +177,6 @@ final class BoxUi extends BlUi {
     }
 
     public ImageView imageView() { return new BoxImage(context,px(20)); }
-    ImageView heroImage() { return new BoxBackdrop(context,px(24)); }
 
     Drawable navigationIcon(int kind) { return icon(kind,false); }
     Drawable actionIcon(int kind) { return icon(kind,true); }
