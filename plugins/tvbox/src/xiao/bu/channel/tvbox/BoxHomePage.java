@@ -37,8 +37,9 @@ final class BoxHomePage extends FrameLayout {
     private final List<Item> items;
     private final Actions actions;
     private final LinearLayout feature;
-    private final TextView title, facts, description, hint;
-    private final Runnable rotate = () -> advance(1);
+    private final TextView title, facts, description, hint, counter;
+    private final ImageButton previous, next;
+    private final Runnable rotate = this::rotateFeature;
     private final Runnable hold = this::playHeldItem;
     private int selected;
     private int heldPosition = -1;
@@ -72,13 +73,21 @@ final class BoxHomePage extends FrameLayout {
         description = featureLabel(25, 2, BoxUi.TEXT, 12);
         hint = featureLabel(18, 1, BoxUi.SUB, 24);
 
-        LayoutParams featureSize = new LayoutParams(-2, -2, Gravity.LEFT | Gravity.CENTER_VERTICAL);
-        featureSize.leftMargin = ui.px(items.size() > 1 ? 80 : 30);
+        LayoutParams featureSize = new LayoutParams(-2, -2, Gravity.LEFT | Gravity.BOTTOM);
+        featureSize.leftMargin = ui.px(items.size() > 1 ? 72 : 30);
+        featureSize.bottomMargin = ui.px(54);
         addView(feature, featureSize);
-        if (items.size() > 1) {
-            addArrow(-1, 5, Gravity.LEFT, "上一项");
-            addArrow(1, 10, Gravity.RIGHT, "下一项");
-        }
+
+        previous = addArrow(-1, 5, Gravity.LEFT, "上一项");
+        next = addArrow(1, 10, Gravity.RIGHT, "下一项");
+
+        counter = ui.text("", 18, BoxUi.TEXT);
+        counter.setGravity(Gravity.CENTER);
+        counter.setPadding(ui.px(15), 0, ui.px(15), 0);
+        counter.setBackgroundDrawable(ui.capsuleGlass(0x9914222a));
+        LayoutParams counterSize = new LayoutParams(-2, ui.px(32), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        counterSize.bottomMargin = ui.px(4);
+        addView(counter, counterSize);
         select(initial);
     }
 
@@ -93,7 +102,7 @@ final class BoxHomePage extends FrameLayout {
         return label;
     }
 
-    private void addArrow(int direction, int icon, int gravity, String label) {
+    private ImageButton addArrow(int direction, int icon, int gravity, String label) {
         ImageButton arrow = new ImageButton(ui.context);
         arrow.setImageDrawable(ui.navigationIcon(icon));
         int padding = ui.px(11);
@@ -102,11 +111,12 @@ final class BoxHomePage extends FrameLayout {
         arrow.setContentDescription(label);
         arrow.setOnClickListener(view -> {
             focusFeature();
-            advance(direction);
+            step(direction);
         });
         arrow.setFocusable(false);
         int size = ui.px(48);
         addView(arrow, new LayoutParams(size, size, gravity | Gravity.CENTER_VERTICAL));
+        return arrow;
     }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
@@ -126,6 +136,10 @@ final class BoxHomePage extends FrameLayout {
         description.setText(item.description);
         description.setVisibility(item.description.isEmpty() ? GONE : VISIBLE);
         hint.setText(item.playable ? "长按 OK 播放" : "按 OK 打开");
+        int total = items.size();
+        counter.setText((position + 1) + " / " + total);
+        previous.setVisibility(position > 0 ? VISIBLE : GONE);
+        next.setVisibility(position + 1 < total ? VISIBLE : GONE);
         setContentDescription(item.name + "，" + hint.getText());
         actions.select(position);
     }
@@ -144,7 +158,7 @@ final class BoxHomePage extends FrameLayout {
         if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 cancelHold();
-                advance(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+                step(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
             }
             return true;
         }
@@ -174,9 +188,14 @@ final class BoxHomePage extends FrameLayout {
         removeCallbacks(hold);
     }
 
-    private void advance(int direction) {
-        int count = items.size();
-        if (count > 1 && isShown() && hasWindowFocus()) select((selected + direction + count) % count);
+    private void step(int direction) {
+        int position = selected + direction;
+        if (position >= 0 && position < items.size()) select(position);
+        restartRotation();
+    }
+
+    private void rotateFeature() {
+        if (isShown() && hasWindowFocus()) select((selected + 1) % items.size());
         restartRotation();
     }
 
