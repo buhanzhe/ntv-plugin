@@ -44,6 +44,7 @@ final class BoxIcon extends Drawable {
         }else if(kind==2){
             for(int a=3;a<=14;a+=11)for(int b=3;b<=14;b+=11){rect.set(x(a),y(b),x(a+7),y(b+7));canvas.drawRoundRect(rect,2*unit,2*unit,paint);}
         }else if(kind==5){move(14.5f,4.5f);line(7,12);line(14.5f,19.5f);canvas.drawPath(path,paint);}
+        else if(kind==10){move(9.5f,4.5f);line(17,12);line(9.5f,19.5f);canvas.drawPath(path,paint);}
         else if(kind==7){move(7,4);line(20,12);line(7,20);path.close();paint.setStyle(Paint.Style.FILL);canvas.drawPath(path,paint);}
         else if(kind==8){move(3,4);line(21,4);line(14,12);line(14,19);line(10,21);line(10,12);path.close();canvas.drawPath(path,paint);}
         else if(kind==9){

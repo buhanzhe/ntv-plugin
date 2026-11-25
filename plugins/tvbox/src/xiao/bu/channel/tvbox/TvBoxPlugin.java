@@ -264,14 +264,21 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 int direction = focusDirection(event.getKeyCode());
                 if (homePage != null && event.getAction() == KeyEvent.ACTION_DOWN
-                        && event.getKeyCode() != KeyEvent.KEYCODE_BACK) homePage.wake(true);
+                        && event.getRepeatCount() == 0 && event.getKeyCode() != KeyEvent.KEYCODE_BACK) {
+                    homePage.restartRotation();
+                }
                 if(event.getAction()==KeyEvent.ACTION_DOWN&&findFocus()==null
                         &&(direction!=0||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER
                             ||event.getKeyCode()==KeyEvent.KEYCODE_ENTER)){
                     focusContent();
-                    if(direction!=0&&findFocus()!=null)return true;
+                    boolean carouselMove = homePage != null && homePage.isFocused()
+                            && (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT);
+                    if (!carouselMove && direction != 0 && findFocus() != null) return true;
                 }
-                if (homePage != null && homePage.confirm(event)) return true;
+                if (homePage != null && homePage.handleKey(event)) return true;
+                if (homePage != null && homePage.isFocused() && direction == View.FOCUS_UP
+                        && event.getAction() == KeyEvent.ACTION_DOWN && categoryButtons.getChildCount() > 0
+                        && categoryButtons.getChildAt(0).requestFocus()) return true;
                 if (super.dispatchKeyEvent(event)) return true;
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
                 if (direction == 0) return false;
@@ -281,8 +288,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
                 int action = event.getActionMasked();
                 if (homePage != null && (action == android.view.MotionEvent.ACTION_DOWN
-                        || action == android.view.MotionEvent.ACTION_MOVE)) {
-                    homePage.wake(false);
+                        || action == android.view.MotionEvent.ACTION_UP)) {
+                    homePage.restartRotation();
                 }
                 return super.dispatchTouchEvent(event);
             }
@@ -640,25 +647,24 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private boolean homeVideos(SiteHome model) {
         List<JSONObject> videos = new ArrayList<>();
-        List<BoxHomePage.Item> cards = new ArrayList<>();
+        List<BoxHomePage.Item> items = new ArrayList<>();
         boolean hasFeature = false;
         for (int i = 0; model.videos != null && i < Math.min(160, model.videos.length()); i++) {
             JSONObject item = model.videos.optJSONObject(i);
             if (item == null || videoName(item).isEmpty()) continue;
             videos.add(item);
             hasFeature |= isMediaEntry(item);
-            cards.add(new BoxHomePage.Item(videoName(item),
+            items.add(new BoxHomePage.Item(videoName(item),
                     metadata(item, "vod_year", "vod_class", "vod_remarks"),
                     BlUi.plain(item.optString("vod_content")).trim(),
-                    artwork(model.site, item, "vod_thumb", "vod_pic_slide", "vod_pic"),
                     canPlayDirectly(item)));
         }
-        if (cards.isEmpty()) return false;
+        if (items.isEmpty()) return false;
         // Configuration, directories and login cards still open their normal actions with OK.
         if (!hasFeature) return videos(model.site, model.videos, false);
         Screen owner = screen;
-        int selected = Math.min(owner.selection, cards.size() - 1);
-        homePage = new BoxHomePage(ui, art, cards, selected, new BoxHomePage.Actions() {
+        int selected = Math.min(owner.selection, items.size() - 1);
+        homePage = new BoxHomePage(ui, items, selected, new BoxHomePage.Actions() {
             @Override public void select(int position) {
                 owner.selection = position;
                 JSONObject item = videos.get(position);
@@ -1567,7 +1573,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private void linkHomeHeader(Button button) {
         button.setOnKeyListener((view, code, event) -> {
             if (code != KeyEvent.KEYCODE_DPAD_DOWN || homePage == null) return false;
-            if (event.getAction() == KeyEvent.ACTION_DOWN) homePage.focusCard();
+            if (event.getAction() == KeyEvent.ACTION_DOWN) homePage.focusFeature();
             return true;
         });
     }
@@ -1707,7 +1713,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         homeSearch.setVisibility(home ? View.VISIBLE : View.GONE);
         homeFavorites.setVisibility(home ? View.VISIBLE : View.GONE);
         root.setPadding(ui.px(home ? 34 : 24), ui.px(home ? 15 : 32),
-                ui.px(home ? 30 : 32), ui.px(home ? 43 : 24));
+                ui.px(home ? 34 : 32), ui.px(24));
         page.setPadding(home ? 0 : ui.px(28), 0, 0, 0);
         homeSite.setText(currentSite == null ? "站点  ⌄" : shortSiteName(currentSite.site.name) + "  ⌄");
         ambientBackdrop();
@@ -1776,7 +1782,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void focusContent() {
-        if (homePage != null && homePage.focusCard()) {
+        if (homePage != null && homePage.focusFeature()) {
             return;
         } else if (primary != null && primary != grid && primary.isShown() && primary.requestFocusFromTouch()) {
             return;
@@ -1990,7 +1996,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (dashPlayer != null) dashPlayer.setActive(active);
         else if(active)main.post(()->{
             if (!disposed && root.isShown()) {
-                if (homePage != null) homePage.wake(false);
+                if (homePage != null) homePage.restartRotation();
                 if (root.findFocus() == null) focusContent();
             }
         });

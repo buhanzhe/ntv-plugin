@@ -21,8 +21,8 @@ final class BoxBackdrop extends ImageView {
         if(bitmap!=current||width!=getWidth()||height!=getHeight()){
             current=bitmap;width=getWidth();height=getHeight();
             boolean poster=bitmap.getWidth()<bitmap.getHeight()*1.15f;
-            float sceneHeight=height*.76f;
-            float scale=poster?Math.min(sceneHeight*.86f/bitmap.getHeight(),1.6f):
+            float sceneHeight=height;
+            float scale=poster?Math.min(sceneHeight*.72f/bitmap.getHeight(),1.6f):
                     Math.max((float)width/bitmap.getWidth(),sceneHeight/bitmap.getHeight());
             float left=poster?width-bitmap.getWidth()*scale-width*.035f:(width-bitmap.getWidth()*scale)/2;
             float top=poster?height*.12f:(sceneHeight-bitmap.getHeight()*scale)/2;
@@ -43,8 +43,8 @@ final class BoxBackdrop extends ImageView {
             float w=Math.max(1,bounds.width()),h=Math.max(1,bounds.height());
             horizontal=new LinearGradient(0,0,w,0,cinema?new int[]{0xea061019,0xb0061019,0x0d061019}:new int[]{0xc509111a,0xbc09111a},cinema?new float[]{0,.40f,1}:null,Shader.TileMode.CLAMP);
             vertical=new LinearGradient(0,0,0,h,
-                    cinema?new int[]{0x70071018,0x00071018,0x08071018,0xff071018}:new int[]{0x10040a10,0x00040a10,0xeb040a10},
-                    cinema?new float[]{0,.13f,.52f,.76f}:new float[]{0,.45f,1},Shader.TileMode.CLAMP);
+                    cinema?new int[]{0x70071018,0x00071018,0x08071018,0xda071018}:new int[]{0x10040a10,0x00040a10,0xeb040a10},
+                    cinema?new float[]{0,.13f,.62f,1}:new float[]{0,.45f,1},Shader.TileMode.CLAMP);
         }
         public void draw(Canvas canvas){paint.setShader(horizontal);canvas.drawRect(getBounds(),paint);paint.setShader(vertical);canvas.drawRect(getBounds(),paint);}
         public void setAlpha(int alpha){}public void setColorFilter(ColorFilter filter){}public int getOpacity(){return PixelFormat.TRANSLUCENT;}
