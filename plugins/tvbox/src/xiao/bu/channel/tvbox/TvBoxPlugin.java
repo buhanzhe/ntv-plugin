@@ -204,6 +204,19 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private android.content.SharedPreferences authorizationPreferences;
     private android.content.SharedPreferences.OnSharedPreferenceChangeListener authorizationListener;
     private long authorizationFeedbackUntil;
+    private CloudLoginAction cloudLoginAction;
+
+    private static final class CloudLoginAction {
+        final BoxSource.Site site;
+        final String command;
+        final Screen screen;
+
+        CloudLoginAction(BoxSource.Site site, String command, Screen screen) {
+            this.site = site;
+            this.command = command;
+            this.screen = screen;
+        }
+    }
 
     @Override public View create(Context context, ClassLoader assets, JSONObject config, Host base) throws Exception {
         if (!(base instanceof VodHost)) throw new IOException("请更新 nTv 以运行 TVBox");
@@ -307,20 +320,32 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         authorizationPreferences = context.getSharedPreferences("spUtils", Context.MODE_PRIVATE);
         authorizationListener = (preferences, key) -> {
             if (key == null || !key.matches("(?i)(?:quark|uc|baidu|bd|ali|aliyun).*?(?:cookie|token|_ck|_st)$")) return;
-            boolean feedback = android.os.SystemClock.uptimeMillis() <= authorizationFeedbackUntil;
-            authorizationFeedbackUntil = 0;
+            boolean quark = key.regionMatches(true, 0, "quark", 0, 5);
             main.post(() -> {
                 if (disposed) return;
                 homes.clear();pages.clear();cancelRecommendations();
                 if (pending != null) cancelPending();
+                boolean feedback = android.os.SystemClock.uptimeMillis() <= authorizationFeedbackUntil;
+                authorizationFeedbackUntil = 0;
                 if (!feedback) return;
-                String text = "网盘授权信息已更新，关闭并重新打开登录面板可刷新状态";
+                CloudLoginAction login = cloudLoginAction;
+                if (quark && login != null && login.screen == screen && storedAuthorization(preferences, key)) {
+                    BoxCloudLoginPanel.refresh(root, main, () -> runSiteAction(login.site, login.command, false),
+                            () -> !disposed && root.isShown() && screen == login.screen
+                                    && cloudLoginAction == login && pending == null);
+                }
+                String text = quark ? "夸克授权信息已更新" : "网盘授权信息已更新";
                 message(text);
                 android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show();
             });
         };
         authorizationPreferences.registerOnSharedPreferenceChangeListener(authorizationListener);
         return container;
+    }
+
+    private static boolean storedAuthorization(android.content.SharedPreferences preferences, String key) {
+        try { return !preferences.getString(key, "").trim().isEmpty(); }
+        catch (ClassCastException unexpectedType) { return false; }
     }
 
     private LinearLayout sidebar() {
@@ -695,7 +720,10 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         }
         String command = item.optString("action");
         if (command.isEmpty() && "action".equals(item.optString("vod_tag"))) command = itemId;
-        if (!command.isEmpty()) runSiteAction(site, command);
+        if (!command.isEmpty()) {
+            String label = videoName(item).trim();
+            runSiteAction(site, command, "登入自己网盘".equals(label) || "登录自己网盘".equals(label));
+        }
         else if ("folder".equals(item.optString("vod_tag")) || "cate".equals(item.optString("vod_tag")))
             listing(site, videoName(item), itemId, "", 1, true);
         else detail(site, item);
@@ -995,8 +1023,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         }
     }
 
-    private void runSiteAction(BoxSource.Site site, String command) {
+    private void runSiteAction(BoxSource.Site site, String command, boolean cloudLogin) {
         homes.remove(siteKey(site));pages.clear();cancelRecommendations();
+        cloudLoginAction = cloudLogin ? new CloudLoginAction(site, command, screen) : null;
         authorizationFeedbackUntil = android.os.SystemClock.uptimeMillis() + 5 * 60 * 1000L;
         load("正在处理站点操作…", () -> {
             source.select(site);
@@ -1250,6 +1279,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void play(BoxSource.Site site, String flag, String id, String title, PlayLine line, int index) {
+        cloudLoginAction = null;
         authorizationFeedbackUntil = 0;
         load("正在解析播放地址…", () -> {
             source.select(site);
