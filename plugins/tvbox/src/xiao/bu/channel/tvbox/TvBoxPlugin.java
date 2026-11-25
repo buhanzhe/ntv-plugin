@@ -1551,7 +1551,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             heading.setGravity(Gravity.CENTER_VERTICAL);
             ProgressBar spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
             spinner.setIndeterminate(true);
-            spinner.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            if (android.os.Build.VERSION.SDK_INT >= 16) {
+                spinner.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            }
             int size = ui.px(26);
             heading.addView(spinner, new LinearLayout.LayoutParams(size, size));
             TextView caption = ui.text(title, 24, BoxUi.TEXT);
