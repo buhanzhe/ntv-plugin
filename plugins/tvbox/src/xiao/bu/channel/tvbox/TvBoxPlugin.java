@@ -639,6 +639,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             }
 
             @Override public void open(int position) {
+                cancelHomePreview();
                 openVideo(model.site, videos.get(position));
             }
         });

@@ -52,8 +52,7 @@ final class BoxHomePage extends FrameLayout {
         setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
         setOnClickListener(view -> {
             focusFeature();
-            if (items.get(selected).playable) actions.play(selected);
-            else actions.open(selected);
+            actions.open(selected);
             restartRotation();
         });
         setOnLongClickListener(view -> {
@@ -178,7 +177,7 @@ final class BoxHomePage extends FrameLayout {
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             boolean click = heldPosition == selected && !event.isCanceled();
             cancelHold();
-            if (click && !items.get(selected).playable) performClick();
+            if (click) performClick();
             restartRotation();
         }
         return true;
