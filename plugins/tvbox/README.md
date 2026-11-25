@@ -85,6 +85,8 @@ python plugins/build-jar.py tvbox --sdk D:/android/sdk --java-home C:/path/to/jd
 
 图片请求头回归：`python plugins/tvbox/tests/run_images.py` 检查多个 `@` 请求头、表单与编码 JSON、加号保留和换行注入拒绝。
 
+配置解码回归：`python plugins/tvbox/tests/run_config.py` 检查明文、Base64 包装、AES 单仓和多仓配置及错误包头。
+
 浏览数据回归：`python plugins/tvbox/tests/run_browse.py` 检查文件显示、缓存副本、容量边界、过期和失效。`tests/BrowseFixture.java` 提供原生设备联调所用的慢推荐、慢分类、首页依赖、长文件名和 24 线路样本。
 
 编译 `tests/Fixture.java` 时，以 Android 平台 JAR 与 `.codex-tmp/tvbox/build/classes` 为 classpath，通过 D8 将生成的 `Fixture.class` 打包成 DEX JAR。启动测试源时加 `--jar PATH`，可验证模拟的夸克与 UC 代理。将 TVBox 和 Python 安装到测试 APK 后，运行 `xiao.bu.tv.TvBoxProtocolInstrumentation`，可检查站源、ES module、Python 和媒体 Range 请求。

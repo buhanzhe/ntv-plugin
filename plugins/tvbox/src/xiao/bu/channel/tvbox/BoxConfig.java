@@ -28,17 +28,22 @@ final class BoxConfig {
     }
 
     private static String decrypt(String text) throws Exception {
-        String metadata = new String(hex(text), "UTF-8").toLowerCase(Locale.US);
-        int start = metadata.indexOf("$#"), end = metadata.indexOf("#$", start + 2);
-        int payload = text.indexOf("2324", (start + 2) * 2);
-        if (start != 0 || end < 2 || end > 18 || payload < 0 || payload + 4 >= text.length() - 26)
+        byte[] frame = hex(text);
+        int payloadEnd = frame.length - 13;
+        int keyEnd = 2;
+        // The key delimiter must start on a byte boundary.
+        while (keyEnd + 1 < payloadEnd && (frame[keyEnd] != '#' || frame[keyEnd + 1] != '$')) keyEnd++;
+        int payloadStart = keyEnd + 2;
+        if (payloadStart >= payloadEnd || (payloadEnd - payloadStart) % 16 != 0)
             throw new IOException("TVBox 加密配置头无效");
-        String key = metadata.substring(start + 2, end);
+        String key = new String(frame, 2, keyEnd - 2, "UTF-8").toLowerCase(Locale.US);
+        if (key.length() > 16) throw new IOException("TVBox 加密配置头无效");
         byte[] password = (key + "0000000000000000").substring(0, 16).getBytes("UTF-8");
-        byte[] iv = (metadata.substring(metadata.length() - 13) + "000").getBytes("UTF-8");
+        String nonce = new String(frame, payloadEnd, 13, "UTF-8").toLowerCase(Locale.US);
+        byte[] iv = (nonce + "000").getBytes("UTF-8");
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(password, "AES"), new IvParameterSpec(iv));
-        return new String(cipher.doFinal(hex(text.substring(payload + 4, text.length() - 26))), "UTF-8");
+        return new String(cipher.doFinal(frame, payloadStart, payloadEnd - payloadStart), "UTF-8");
     }
 
     private static byte[] hex(String text) throws IOException {
