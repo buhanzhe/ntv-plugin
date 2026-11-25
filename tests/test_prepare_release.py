@@ -19,23 +19,20 @@ class ReleaseTest(unittest.TestCase):
             RELEASE.prepare("v9.9.9", output)
             catalog = json.loads((output / "plugins.json").read_text(encoding="utf-8"))
             self.assertEqual({p["id"] for p in catalog["plugins"]},
-                             {"file-browser", "tvbox", "python", "bl", "tvbus", "ku9-hnyx"})
-            allowed = {"file-browser.jar", "tvbox.jar", "python-arm32.jar", "python-arm64.jar",
-                       "bl.jar", "tvbus.jar", "hnyx.js", "plugins.json", "SHA256SUMS", "all.m3u",
-                       "file-browser.m3u", "tvbox.m3u", "bl.m3u"}
-            self.assertLessEqual({p.name for p in output.iterdir()}, allowed)
+                             {"file-browser", "tvbox", "python", "bl", "tvbus"})
+            expected = {"file-browser.jar", "tvbox.jar", "python-arm32.jar", "python-arm64.jar",
+                        "bl.jar", "plugins.json"}
+            if (ROOT / "plugins/tvbus/dist/tvbus.jar").is_file():
+                expected.add("tvbus.jar")
+            self.assertEqual({p.name for p in output.iterdir()}, expected)
+            listed = set()
             for plugin in catalog["plugins"]:
                 for artifact in plugin["artifacts"]:
+                    listed.add(artifact["file"])
                     data = (output / artifact["file"]).read_bytes()
                     self.assertEqual(len(data), artifact["bytes"])
                     self.assertEqual(hashlib.sha256(data).hexdigest(), artifact["sha256"])
-            sums = dict(line.split("  ", 1)[::-1] for line in
-                        (output / "SHA256SUMS").read_text().splitlines())
-            self.assertEqual(set(sums), {p.name for p in output.iterdir()} - {"SHA256SUMS"})
-            for name, expected in sums.items():
-                self.assertEqual(hashlib.sha256((output / name).read_bytes()).hexdigest(), expected)
-            playlist = (output / "all.m3u").read_text(encoding="utf-8")
-            self.assertEqual(playlist.count("#EXTINF:"), 3)
+            self.assertEqual(listed, expected - {"plugins.json"})
 
     def test_nonempty_output_is_rejected_without_modifying_files(self):
         with tempfile.TemporaryDirectory() as directory:

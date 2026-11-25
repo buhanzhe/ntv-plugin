@@ -26,9 +26,7 @@ v7 的搜索页默认「多站搜索」，也可以选择「当前站点」。�
 
 `parse=1` 和配置中的 type 0 网页解析通过限时 WebView 嗅探取得媒体地址，并保留媒体请求的 Cookie、Referer、User-Agent 等请求头。旧版设备会优先读取普通 HTML 的媒体标签；动态网页解析每次最多等待 20 秒。网页需要登录、验证或设备网页内核不支持时，仍可能需要切换线路。
 
-通过下方在线 M3U 或带 SHA-256 的 HTTPS JAR 地址打开 TVBox。共用界面组件随 TVBox JAR 一并打包。
-
-也可以导入 [TVBox 在线订阅](https://github.com/buhanzhe/ntv-plugin/releases/latest/download/tvbox.m3u)。
+下载 [TVBox JAR](https://github.com/buhanzhe/ntv-plugin/releases/latest/download/tvbox.jar) 后使用自己的配置地址。共用界面组件随 JAR 打包。
 
 ## 遥控器
 
@@ -41,12 +39,12 @@ v7 的搜索页默认「多站搜索」，也可以选择「当前站点」。�
 ```m3u
 #EXTM3U
 #EXTINF:-1 group-title="点播",TVBox
-ntv-plugin://local/tvbox.jar?url=http%3A%2F%2Fwww.xn--sss604efuw.cc%2Ftv
+ntv-plugin://local/tvbox.jar?url=https%3A%2F%2Fexample.org%2Fconfig.json
 #EXTINF:-1 group-title="点播",BL
 ntv-plugin://local/bl.jar
 ```
 
-也可以发布 JAR 到 HTTPS，然后在频道 URL 同时传入 `sha256` 和 `url`。SHA-256 取自同一版 JAR 随附的 `.sha256` 文件。
+也可以使用 HTTPS JAR，并在频道地址同时传入 `sha256` 和 `url`。发布包的 SHA-256 在 [plugins.json](https://github.com/buhanzhe/ntv-plugin/releases/latest/download/plugins.json) 中。
 
 ```text
 https://example.org/tvbox.jar?sha256=<SHA-256>&url=<编码后的配置地址>

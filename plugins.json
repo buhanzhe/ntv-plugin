@@ -86,22 +86,6 @@
       "name": "TVBus",
       "kind": "tvbus",
       "artifacts": []
-    },
-    {
-      "id": "ku9-hnyx",
-      "name": "Ku9 湖南 IPv6",
-      "kind": "ku9-js",
-      "artifacts": [
-        {
-          "file": "hnyx.js",
-          "url": "https://github.com/buhanzhe/ntv-plugin/releases/download/v1.0.5/hnyx.js",
-          "sha256": "b5cf5bf0cd234dfdf735da3edd6cccd6e3c5c5b510333ea0c605de7a6c9fe3ad",
-          "bytes": 9551,
-          "version": "b5cf5bf0cd23",
-          "minSdk": 14,
-          "abis": []
-        }
-      ]
     }
   ]
 }
