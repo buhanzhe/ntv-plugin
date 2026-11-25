@@ -1,6 +1,6 @@
 # TVBox 布局与遥控器验证（2026-11-24）
 
-沿用 TVBox v7 和 Release v1.0.5，未提高版本号。本次 TVBox JAR SHA-256：`de7184acac23330aff608795152afb893cd68fa6e14e27458ff8f0bfde65db8f`。
+沿用 TVBox v7 和 Release v1.0.5，未提高版本号。本次 TVBox JAR SHA-256：`7fc29acc22e525ad385e5bf450c3052f5e66b7d9d928825ff42fa5835dae67ab`。
 
 ## 遥控器与清晰图标
 
@@ -129,3 +129,5 @@ Android 4.4.4 实机使用设备本地的受控慢请求验证：初次配置可
 Samsung GT-N7005（API 15，ARM32）同签名覆盖安装 Bro 1.8.3 / versionCode 12。加载窗口中 Android 4.1 才提供的无障碍标记加上版本判断。修复前配置加载未能打开 TVBox，修复后能浏览、取消与重试。
 
 ADB 的 `input keyevent` 实测方向键、返回、标准确认和厂商键 96／109，重复确认未增加站点请求，返回恢复原列表焦点。自有 MP4 样片在系统播放器和 IJK 软件解码均显示画面并推动播放进度，暂停、左右单击定位 5 秒和选集切换通过。IJK 音轨弹窗能打开并返回原控件。长按另由测试组件注入按下、保持、松开，确认预览期间未定位、松开后提交。DASH 在 4.0.4 上显示 Android 4.1 的最低版本要求。
+
+同一台 4.0.4 设备实测短 Toast：DASH 提示需要 Android 4.1，易听缺少 `java.util.Objects` 时提示需要 Android 4.4。加载窗口关闭，详情或站点列表保留，页面状态文本未被错误提示替换。

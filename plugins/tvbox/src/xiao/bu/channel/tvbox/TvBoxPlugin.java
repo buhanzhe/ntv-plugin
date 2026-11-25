@@ -31,6 +31,7 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -441,6 +442,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     session.select(site);
                     data = session.home();
                 } catch (Exception | LinkageError error) {
+                    String compatibility = unsupportedAndroid(error);
+                    if (compatibility != null) {
+                        session.close();
+                        homeResults.post(() -> {
+                            if (disposed || generation != request) return;
+                            pendingHome = null;
+                            finishLoading();
+                            compatibilityToast(compatibility);
+                        });
+                        return;
+                    }
                     data = new JSONObject();
                     notice = "首页加载失败，可尝试搜索";
                 }
@@ -1251,8 +1263,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             okhttp3.HttpUrl address = BoxHttp.url(url);
             boolean dash = result.optString("format").toLowerCase(java.util.Locale.US).contains("dash")
                     || address.encodedPath().endsWith(".mpd") || "mpd".equals(address.queryParameter("type"));
-            if (dash && android.os.Build.VERSION.SDK_INT < 16) throw new IOException("DASH 播放需要 Android 4.1 或更新系统");
-            if (dash && !(host instanceof ChannelPlugin.PlayerUiHost)) throw new IOException("请更新 nTv 以使用统一播放控件");
+            if (dash && android.os.Build.VERSION.SDK_INT < 16) {
+                return () -> compatibilityToast("DASH 播放需要 Android 4.1 或更新系统");
+            }
+            if (dash && !(host instanceof ChannelPlugin.PlayerUiHost)) {
+                return () -> compatibilityToast("播放 DASH 需要更新 nTv");
+            }
             return () -> {
                 if (dashPlayer != null) closeDashPlayer();
                 playbackLine = line;
@@ -1524,6 +1540,11 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 main.post(() -> {
                     if (disposed || generation != request) return;
                     finishLoading();
+                    String compatibility = unsupportedAndroid(error);
+                    if (compatibility != null) {
+                        compatibilityToast(compatibility);
+                        return;
+                    }
                     String detail = error instanceof IOException ? error.getMessage() : error.getClass().getSimpleName();
                     message("加载失败 · " + (detail == null ? "请检查站点" : detail));
                     if (!root.isShown() && playbackLine != null) host.status(status.getText().toString());
@@ -1531,6 +1552,24 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             }
         });
         showLoading(title);
+    }
+
+    private static String unsupportedAndroid(Throwable error) {
+        if (android.os.Build.VERSION.SDK_INT >= 19) return null;
+        for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
+            if (error instanceof NoClassDefFoundError || error instanceof ClassNotFoundException) {
+                String symbol = error.getMessage();
+                if ("java.util.Objects".equals(symbol) || "java/util/Objects".equals(symbol)
+                        || "Ljava/util/Objects;".equals(symbol)) {
+                    return "此站点需要 Android 4.4 或更新系统";
+                }
+            }
+        }
+        return null;
+    }
+
+    private void compatibilityToast(String message) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
     }
 
     private void showLoading(String title) {
