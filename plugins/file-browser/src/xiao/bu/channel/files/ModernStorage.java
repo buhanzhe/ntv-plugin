@@ -17,6 +17,7 @@ final class ModernStorage {
         }catch(android.content.pm.PackageManager.NameNotFoundException ignored){}return false;
     }
     static void requestLocalNetwork(android.app.Activity activity){activity.requestPermissions(new String[]{"android.permission.ACCESS_LOCAL_NETWORK"},0x4643);}
+    static boolean shouldExplain(android.app.Activity activity,boolean network){String permission=network?"android.permission.ACCESS_LOCAL_NETWORK":readPermission(activity);return permission!=null&&activity.shouldShowRequestPermissionRationale(permission);}
     static String readPermission(Context context) {
         String permission=android.os.Build.VERSION.SDK_INT>=33?"android.permission.READ_MEDIA_VIDEO":android.Manifest.permission.READ_EXTERNAL_STORAGE;
         try {String[] declared=context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions;

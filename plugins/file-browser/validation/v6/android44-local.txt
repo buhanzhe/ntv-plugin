@@ -1,0 +1,100 @@
+ACTIVITY_READY
+
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+
+PASS Android 4.4.4 / API 19
+
+PASS directory loads: 资料库  /  本机存储 / 3 项 · 方向键选择，确定打开
+
+PASS modern directory picker hidden on old Android
+
+PASS directory loads: 资料库  /  本机存储 / 3 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  本机存储  ·  /storage/emulated/0 / 44 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  Android  ·  /storage/emulated/0/Android / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  data  ·  /storage/emulated/0/Android/data / 8 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  xiao.bu.filebrowserprobe  ·  /storage/emulated/0/Android/data/xiao.bu.filebrowserprobe / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  files  ·  /storage/emulated/0/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local video filtering and subdirectory (text file hidden)
+
+PASS directory loads: 资料库  /  files  ·  /storage/emulated/0/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local reuses web-TV playback controls
+
+PASS local decoded dimensions 640x360
+
+PASS local clock advances 167 -> 2375
+
+PASS local native renderer reported first frame
+
+CAPTURE local
+
+PASS local remote pause
+
+PASS local remote resume
+
+PASS local remote seek +10s
+
+PASS local background pause
+
+PASS local foreground resume
+
+PASS local return releases player
+
+ACTIVITY_READY
+
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+
+PASS Android 4.4.4 / API 19
+
+PASS directory loads: 资料库  /  本机存储 / 3 项 · 方向键选择，确定打开
+
+PASS modern directory picker hidden on old Android
+
+PASS directory loads: 资料库  /  本机存储 / 3 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  本机存储  ·  /storage/emulated/0 / 44 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  Android  ·  /storage/emulated/0/Android / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  data  ·  /storage/emulated/0/Android/data / 8 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  xiao.bu.filebrowserprobe  ·  /storage/emulated/0/Android/data/xiao.bu.filebrowserprobe / 1 项 · 方向键选择，确定打开
+
+PASS directory loads: 资料库  /  files  ·  /storage/emulated/0/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local video filtering and subdirectory (text file hidden)
+
+PASS directory loads: 资料库  /  files  ·  /storage/emulated/0/Android/data/xiao.bu.filebrowserprobe/files / 2 项 · 方向键选择，确定打开
+
+PASS local reuses web-TV playback controls
+
+PASS local decoded dimensions 640x360
+
+PASS local clock advances 167 -> 2375
+
+PASS local native renderer reported first frame
+
+CAPTURE local
+
+PASS local remote pause
+
+PASS local remote resume
+
+PASS local remote seek +10s
+
+PASS local background pause
+
+PASS local foreground resume
+
+PASS local return releases player
+
+FILE_BROWSER_RESULT=PASS
+
+
+

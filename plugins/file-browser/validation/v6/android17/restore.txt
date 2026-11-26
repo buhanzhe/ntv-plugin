@@ -1,0 +1,40 @@
+ACTIVITY_READY
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+PASS Android 17 / API 37
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS no separate permission menu
+PASS directory loads: 资料库  /  ntv-file-browser-test-544ef4ebfeb2  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-544ef4ebfeb2 / 2 项 · 方向键选择，确定打开
+PASS persisted directory reopens without broad storage permission
+PASS directory loads: 资料库  /  ntv-file-browser-test-544ef4ebfeb2  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-544ef4ebfeb2 / 2 项 · 方向键选择，确定打开
+PASS saf-restored reuses web-TV playback controls
+PASS saf-restored decoded dimensions 640x360
+PASS saf-restored clock advances 148 -> 2349
+PASS saf-restored native renderer reported first frame
+CAPTURE saf-restored
+PASS saf-restored remote pause
+PASS saf-restored remote resume
+PASS saf-restored remote seek +10s
+PASS saf-restored background pause
+PASS saf-restored foreground resume
+ACTIVITY_READY
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+PASS Android 17 / API 37
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS no separate permission menu
+PASS directory loads: 资料库  /  ntv-file-browser-test-544ef4ebfeb2  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-544ef4ebfeb2 / 2 项 · 方向键选择，确定打开
+PASS persisted directory reopens without broad storage permission
+PASS directory loads: 资料库  /  ntv-file-browser-test-544ef4ebfeb2  ·  content://com.android.externalstorage.documents/tree/primary%3AMovies%2Fntv-file-browser-test-544ef4ebfeb2 / 2 项 · 方向键选择，确定打开
+PASS saf-restored reuses web-TV playback controls
+PASS saf-restored decoded dimensions 640x360
+PASS saf-restored clock advances 148 -> 2349
+PASS saf-restored native renderer reported first frame
+CAPTURE saf-restored
+PASS saf-restored remote pause
+PASS saf-restored remote resume
+PASS saf-restored remote seek +10s
+PASS saf-restored background pause
+PASS saf-restored foreground resume
+STORAGE_RESULT=PASS
+

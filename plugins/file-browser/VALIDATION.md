@@ -1,3 +1,32 @@
+# v6 简化按需授权
+
+日期：2026-11-26。版本 6，minSdk 14，379,864 字节。最终 JAR SHA-256：`ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd`。独立探针校验并加载此 JAR，不覆盖正式 nTv。
+
+- 删除侧栏“文件授权”及其中混合的六项操作；Android 5.0+ 只保留“添加文件夹”，直接进入系统目录选择器，已选目录显示在对应存储页。
+- 点击本机目录后才请求所需读取权限。拒绝时就地显示“允许访问”“选择文件夹”和“返回”，不能继续请求时才提供设置入口。宿主未声明读取权限时可直接选择文件夹。
+- SMB 的局域网权限只在扫描/连接时处理，不放入文件授权流程。媒体与局域网请求共用一个有时限的状态观察器；返回、切换来源或选目录会取消旧请求的恢复动作。
+- 从设置返回重新检查。授权成功继续原操作，取消后不自动重新弹窗。新 API 仍由系统版本判断隔离，4.0.4 不出现新系统的授权入口。
+
+设计依据：[Android 按功能请求权限](https://developer.android.com/training/permissions/requesting)、[系统目录选择器无需广泛存储权限](https://developer.android.com/training/data-storage/shared/documents-files)。
+
+## 本轮验证
+
+| 环境 | 检查与结果 |
+| --- | --- |
+| Xiaomi 15 Ultra，Android 17 / API37，targetSdk37 探针 | 真实媒体权限拒绝后直接提示、重试允许、本机视频播放；真实系统目录选择、持久读取、撤销广泛读取权限后跨进程恢复与播放；遥控器焦点、暂停继续、跳播、前后台均通过 |
+| 同一 Android 17 真机 | 返回退出拒绝提示、取消目录选择后不重新弹窗，通过 |
+| 同一 Android 17 真机，真实 Wi-Fi 局域网 | 本地网络权限实际拒绝、简化提示中重试允许、自动免密共享枚举、账号错误后恢复、边读边播、Range 精确字节和代理释放通过 |
+| 同一 Android 17 真机，隔离 Samba 经 ADB reverse | SMB3.1.1 强制 AES-128-CMAC 签名、认证与播放通过 |
+| Android 4.4.4 / API19 真机 | 没有现代目录入口，本机过滤、640×360 实际解码、首帧、暂停继续、跳播、前后台与返回释放通过 |
+
+Android 17 的局域网系统弹窗只有“允许此应用访问本地网络设备？”和无资源 ID 的虚拟按钮；测试适配器仅在本测试包的局域网请求待处理时识别该窗口。此次确实执行了拒绝后重试，与 v5 记录中的未覆盖状态不同。
+
+两项限速 LAN 播放在首帧及播放时钟检查点各传输约 2.03 MB，小于 11,803,893 字节完整视频。记录：[权限与目录](validation/v6/android17/summary.json)、[拒绝/允许](validation/v6/android17/grant.txt)、[恢复](validation/v6/android17/restore.txt)、[返回与取消](validation/v6/android17/cancel.txt)、[SMB 三项回归](validation/v6/android17/matrix.json)、[4.4 本机](validation/v6/android44-local.txt)。
+
+API14 编译、DEX/ABI/哈希检查、AES-CMAC 标准向量和 HTTP Range/HEAD/非法范围/令牌/关闭检查通过。Android 7.0 模拟器另外通过运行时拒绝/允许和本机播放，但系统选择器未打开指定目录，未记为完整目录授权通过。本轮没有连接到 4.0.4 真机，未重跑完整八项 SMB 矩阵、自动扫描及实体 USB 插拔；下方历史记录的设备和版本范围保持不变。
+
+---
+
 # v5 Android 17 真机与旧系统回归
 
 日期：2026-11-24。版本 5，minSdk 14，JAR 379,969 字节，SHA-256 `16e18fcc002eef536dfe597ff9c7cf4b4ac1f70e85c19f81f3fc257faa8fbb19`。下列设备均加载并核对这份最终 JAR；使用独立探针，不覆盖正式 nTv。

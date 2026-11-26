@@ -22,7 +22,7 @@ public final class StorageProbe extends Probe {
     Button findVisible(View view,String title){if(view.getVisibility()!=View.VISIBLE)return null;if(view instanceof Button&&title.contentEquals(((Button)view).getText()))return (Button)view;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++){Button found=findVisible(group.getChildAt(i),title);if(found!=null)return found;}}return null;}
     void remoteSystemButton(String... ids)throws Exception{SystemUi.press(this,ids);}
     void dialog(boolean allow)throws Exception{remoteSystemButton("com.android.packageinstaller:id/permission_"+(allow?"allow":"deny")+"_button","com.google.android.packageinstaller:id/permission_"+(allow?"allow":"deny")+"_button","com.android.permissioncontroller:id/permission_"+(allow?"allow":"deny")+"_button","com.miui.packageinstaller:id/permission_"+(allow?"allow":"deny")+"_button");}
-    void overlayFocus()throws Exception{View panel=(View)field(plugin,"accessShell");check(panel!=null&&panel.hasFocus(),"authorization panel owns focus");ui(()->{ArrayList<View> focusable=new ArrayList<>();root.addFocusables(focusable,View.FOCUS_FORWARD);for(View v:focusable){View walk=v;boolean inside=false;while(walk!=null){if(walk==panel){inside=true;break;}walk=walk.getParent() instanceof View?(View)walk.getParent():null;}if(!inside)throw new AssertionError("Focus escaped to background");}});log("CAPTURE access");Thread.sleep(1500);captureApp("access");}
+    void overlayFocus()throws Exception{View panel=(View)field(plugin,"accessShell");check(panel!=null&&panel.hasFocus(),"contextual access prompt owns focus");ui(()->{ArrayList<View> actions=new ArrayList<>();panel.addFocusables(actions,View.FOCUS_FORWARD);if(actions.size()>3)throw new AssertionError("Access prompt has too many actions: "+actions.size());});ui(()->{ArrayList<View> focusable=new ArrayList<>();root.addFocusables(focusable,View.FOCUS_FORWARD);for(View v:focusable){View walk=v;boolean inside=false;while(walk!=null){if(walk==panel){inside=true;break;}walk=walk.getParent() instanceof View?(View)walk.getParent():null;}if(!inside)throw new AssertionError("Focus escaped to background");}});log("CAPTURE access");Thread.sleep(1500);captureApp("access");}
     @Override public void onStart(){int result=Activity.RESULT_CANCELED;
         try{
             activity=startActivitySync(new Intent(getTargetContext(),ProbeActivity.class).putExtra("fixture",args.getString("fixture")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));log("ACTIVITY_READY");if(Build.VERSION.SDK_INT>=29){if(!activity.hasWindowFocus())log("WAIT_FOREGROUND");waitFor("probe activity foreground",()->activity.hasWindowFocus());}
@@ -34,7 +34,7 @@ public final class StorageProbe extends Probe {
                 public void chooseDirectory(android.webkit.ValueCallback<Uri[]> callback){((ProbeActivity)activity).chooseTree(callback);}
             });activity.setContentView(root);watchVideoCreation();}catch(Exception e){throw new RuntimeException(e);}});
             check(Build.VERSION.SDK_INT>=23,"Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT);loaded();
-            check(!effectiveRead(),"effective storage permission initially denied");
+            check(!effectiveRead(),"effective storage permission initially denied");check(findVisible(root,"文件授权")==null,"no separate permission menu");
             if("restore".equals(args.getString("phase"))||"show".equals(args.getString("phase"))){
                 waitFor("persisted directory",()->list().getCount()>0);final int[] saved={-1};
                 ui(()->{try{for(int i=0;i<list().getCount();i++){Object item=list().getAdapter().getItem(i);if(((Integer)field(item,"kind"))==1&&(Build.VERSION.SDK_INT<30||String.valueOf(field(item,"location")).contains(args.getString("fixture")))){saved[0]=i;break;}}if(saved[0]<0)throw new AssertionError("Saved grant missing");list().requestFocusFromTouch();list().setSelection(saved[0]);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);loaded();
@@ -43,13 +43,25 @@ public final class StorageProbe extends Probe {
             boolean runtimeDenied=activity.checkSelfPermission(Build.VERSION.SDK_INT>=33?"android.permission.READ_MEDIA_VIDEO":android.Manifest.permission.READ_EXTERNAL_STORAGE)!=0;
             row("本机存储");if(runtimeDenied)dialog(false);else log("LIMIT emulator treats storage as install-granted; testing AppOps denial/settings recovery instead of runtime dialog");
             waitFor("permission denial return",()->!((Boolean)field(plugin,"storagePermissionPending")));
-            check(list().getCount()==0,"denial does not expose files");press("文件授权");overlayFocus();
-            if(runtimeDenied){press("允许读取视频");dialog(true);}else{press("应用权限设置");waitFor("settings foreground",()->{AccessibilityNodeInfo n=getUiAutomation().getRootInActiveWindow();if(n==null)return false;try{return "com.android.settings".contentEquals(n.getPackageName());}finally{n.recycle();}});log("WAIT_APP_OP_ALLOW");waitFor("test app permission enabled",()->effectiveRead());long now=SystemClock.uptimeMillis();getUiAutomation().injectInputEvent(new KeyEvent(now,now,KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_BACK,0),true);getUiAutomation().injectInputEvent(new KeyEvent(now,now+20,KeyEvent.ACTION_UP,KeyEvent.KEYCODE_BACK,0),true);}
+            check(list().getCount()==0,"denial does not expose files");overlayFocus();
+            if("cancel".equals(args.getString("phase"))){
+                back();loaded();check(field(plugin,"accessShell")==null&&field(plugin,"current")==null,"BACK leaves denied access and restores storage home");
+                Thread.sleep(1200);check(field(plugin,"accessShell")==null&&!((Boolean)field(plugin,"storagePermissionNeeded")),"cancelled permission request does not reopen prompt");
+                press("添加文件夹");waitFor("system folder picker opens",()->{AccessibilityNodeInfo n=getUiAutomation().getRootInActiveWindow();if(n==null)return false;try{return String.valueOf(n.getPackageName()).contains("documentsui");}finally{n.recycle();}});
+                getUiAutomation().waitForIdle(500,5000);
+                for(int i=0;i<12&&!root.hasWindowFocus();i++){
+                    AccessibilityNodeInfo n=getUiAutomation().getRootInActiveWindow();String pkg=n==null?"":String.valueOf(n.getPackageName());if(n!=null)n.recycle();
+                    if(pkg.contains("documentsui"))sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);Thread.sleep(500);
+                }
+                waitFor("folder picker cancelled",()->root.hasWindowFocus()&&message().contains("未添加文件夹"));
+                check(field(plugin,"accessShell")==null&&field(plugin,"current")==null,"cancelled folder picker returns without new permission prompt");result=Activity.RESULT_OK;return;
+            }
+            if(runtimeDenied){press("允许访问");dialog(true);}else{press("打开设置");waitFor("settings foreground",()->{AccessibilityNodeInfo n=getUiAutomation().getRootInActiveWindow();if(n==null)return false;try{return "com.android.settings".contentEquals(n.getPackageName());}finally{n.recycle();}});log("WAIT_APP_OP_ALLOW");waitFor("test app permission enabled",()->effectiveRead());long now=SystemClock.uptimeMillis();getUiAutomation().injectInputEvent(new KeyEvent(now,now,KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_BACK,0),true);getUiAutomation().injectInputEvent(new KeyEvent(now,now+20,KeyEvent.ACTION_UP,KeyEvent.KEYCODE_BACK,0),true);}
             waitFor("app focus after settings",()->root.hasWindowFocus());waitFor("permission recheck",()->!((Boolean)field(plugin,"storagePermissionNeeded"))&&!message().contains("正在读取"));
             if(Environment.getExternalStorageDirectory().canRead()){
                 check(list().getCount()>0,"grant automatically resumes browsing");if(Build.VERSION.SDK_INT>=30){row("Movies");row(args.getString("fixture"));}else{row("Android");row("data");row("xiao.bu.filebrowserprobe");row("files");}loaded();row("sample.mp4");playback("local");back();loaded();check(video()==null,"local return releases player");
             }else{check(message().contains("目录不可读"),"unmounted shared storage gives actionable error");log("LIMIT emulator reports permission allowed but shared storage remains unreadable; continuing through system directory authorization");}
-            press("文件授权");overlayFocus();press("选择目录");
+            if(field(plugin,"accessShell")!=null){overlayFocus();press("选择文件夹");}else press("添加文件夹");
             remoteSystemButton("com.android.documentsui:id/action_menu_select","com.google.android.documentsui:id/action_menu_select","android:id/button1");
             // Some ROMs ask for a second confirmation, others immediately return the URI.
             long confirmEnd=SystemClock.uptimeMillis()+2500;while(SystemClock.uptimeMillis()<confirmEnd){if(((View)field(plugin,"libraryShell")).hasWindowFocus())break;Thread.sleep(100);}

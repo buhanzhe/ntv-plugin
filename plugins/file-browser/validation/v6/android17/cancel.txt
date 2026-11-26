@@ -1,0 +1,34 @@
+ACTIVITY_READY
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+PASS Android 17 / API 37
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS no separate permission menu
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS system control activated with D-pad
+PASS denial does not expose files
+PASS contextual access prompt owns focus
+CAPTURE access
+APP_CAPTURE access
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS BACK leaves denied access and restores storage home
+PASS cancelled permission request does not reopen prompt
+PASS cancelled folder picker returns without new permission prompt
+ACTIVITY_READY
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+PASS Android 17 / API 37
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS effective storage permission initially denied
+PASS no separate permission menu
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS system control activated with D-pad
+PASS denial does not expose files
+PASS contextual access prompt owns focus
+CAPTURE access
+APP_CAPTURE access
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+PASS BACK leaves denied access and restores storage home
+PASS cancelled permission request does not reopen prompt
+PASS cancelled folder picker returns without new permission prompt
+STORAGE_RESULT=PASS
+

@@ -1,0 +1,66 @@
+ACTIVITY_READY
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+SERVER impacket-guest API 37
+PASS system control activated with D-pad
+PASS denied local network permission keeps recoverable form
+PASS system control activated with D-pad
+PASS plugin requested native local network permission
+PASS directory loads: smb://FIXTURE_HOST:39730/ / 2 项 · 确定打开，返回上一级
+PASS password-free entry opens automatically
+PASS directory loads: smb://FIXTURE_HOST:39730/ / 2 项 · 确定打开，返回上一级
+PASS directory loads: 资料库  /  媒体 VIDEOS/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/ / 1 项 · 方向键选择，确定打开
+PASS server root enumerates Unicode share
+PASS directory loads: 资料库  /  媒体 VIDEOS/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/ / 1 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS smb reuses web-TV playback controls
+PASS smb decoded dimensions 640x360
+PASS smb clock advances 64 -> 2038
+PASS smb native renderer reported first frame
+CAPTURE smb
+PASS smb remote pause
+PASS smb remote resume
+PASS smb remote seek +10s
+PASS smb background pause
+PASS smb foreground resume
+PASS SMB HTTP byte range supported
+PASS SMB seek returns exact fixture bytes
+PASS remote BACK releases player and proxy
+PASS proxy socket closed
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS password never persisted
+ACTIVITY_READY
+PASS delivered JAR SHA-256 ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd
+PASS directory loads: 资料库  /  本机存储 / 4 项 · 方向键选择，确定打开
+SERVER impacket-guest API 37
+PASS system control activated with D-pad
+PASS denied local network permission keeps recoverable form
+PASS system control activated with D-pad
+PASS plugin requested native local network permission
+PASS directory loads: smb://FIXTURE_HOST:39730/ / 2 项 · 确定打开，返回上一级
+PASS password-free entry opens automatically
+PASS directory loads: smb://FIXTURE_HOST:39730/ / 2 项 · 确定打开，返回上一级
+PASS directory loads: 资料库  /  媒体 VIDEOS/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/ / 1 项 · 方向键选择，确定打开
+PASS server root enumerates Unicode share
+PASS directory loads: 资料库  /  媒体 VIDEOS/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/ / 1 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS smb reuses web-TV playback controls
+PASS smb decoded dimensions 640x360
+PASS smb clock advances 64 -> 2038
+PASS smb native renderer reported first frame
+CAPTURE smb
+PASS smb remote pause
+PASS smb remote resume
+PASS smb remote seek +10s
+PASS smb background pause
+PASS smb foreground resume
+PASS SMB HTTP byte range supported
+PASS SMB seek returns exact fixture bytes
+PASS remote BACK releases player and proxy
+PASS proxy socket closed
+PASS directory loads: 资料库  /  子目录 中文/  ·  smb://FIXTURE_HOST:39730/媒体 VIDEOS/子目录 中文/ / 1 项 · 方向键选择，确定打开
+PASS password never persisted
+SMB_RESULT=PASS
+

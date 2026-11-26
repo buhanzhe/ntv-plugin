@@ -25,9 +25,10 @@ public final class SmbProbe extends Probe {
             }
         }catch(Exception error){throw new RuntimeException(error);}});
         if(!automatic){waitForIdleSync();Thread.sleep(150);sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);}
-        if(Build.VERSION.SDK_INT>=37&&activity.getApplicationInfo().targetSdkVersion>=37&&activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")!=0){if(Boolean.parseBoolean(args.getString("denyNetwork"))){boolean denied=SystemUi.pressUnless(this,()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0,"com.android.permissioncontroller:id/permission_deny_button");if(denied){waitFor("network denial return",()->!((Boolean)field(plugin,"networkPermissionPending")));check(field(plugin,"smb")==null&&field(plugin,"form")!=null,"denied local network permission keeps recoverable form");ui(()->button(root,"连接").requestFocusFromTouch());waitForIdleSync();sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);}}
+        if(Build.VERSION.SDK_INT>=37&&activity.getApplicationInfo().targetSdkVersion>=37&&activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")!=0){if(Boolean.parseBoolean(args.getString("denyNetwork"))){boolean denied=SystemUi.pressUnless(this,()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0,"com.android.permissioncontroller:id/permission_deny_button");if(denied){waitFor("network denial return",()->!((Boolean)field(plugin,"networkPermissionPending")));check(field(plugin,"smb")==null&&field(plugin,"form")!=null,"denied local network permission keeps recoverable form");waitFor("network access prompt",()->field(plugin,"accessShell")!=null);ui(()->button((View)uncheckedAccess(),"允许访问").requestFocusFromTouch());waitForIdleSync();sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);}}
             SystemUi.pressUnless(this,()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0,"com.android.permissioncontroller:id/permission_allow_button");waitFor("local network permission",()->activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")==0);check(true,"plugin requested native local network permission");}
     }
+    Object uncheckedAccess(){try{return field(plugin,"accessShell");}catch(Exception e){throw new RuntimeException(e);}}
     void connected()throws Exception{waitFor("SMB connection",()->{if(message().contains("失败"))throw new AssertionError(message());return field(plugin,"form")==null;});loaded();}
     void range(String url)throws Exception{
         HttpURLConnection http=(HttpURLConnection)new URL(url).openConnection();http.setConnectTimeout(10000);http.setReadTimeout(10000);http.setRequestProperty("Range","bytes=1048576-1052671");
@@ -56,6 +57,9 @@ public final class SmbProbe extends Probe {
             try{new Socket("127.0.0.1",new URL(url).getPort()).close();throw new AssertionError("Proxy still listening");}catch(ConnectException expected){check(true,"proxy socket closed");}
             loaded();check(!activity.getSharedPreferences("file-browser",0).getAll().containsValue("test-password"),"password never persisted");result=Activity.RESULT_OK;
         }catch(Throwable error){log("FAIL "+android.util.Log.getStackTraceString(error));
+            try{log("NETWORK_STATE requested="+field(plugin,"networkRequested")+" pending="+field(plugin,"networkPermissionPending")+" granted="+activity.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK")+" gate="+(field(plugin,"accessShell")!=null));
+                SystemUi.diagnostic(this);if(Build.VERSION.SDK_INT>=26)AppCapture.save(this,"network-state");
+            }catch(Throwable ignored){}
             try{Object session=loader.loadClass("xiao.bu.channel.files.SmbSession").getConstructor(String.class,String.class,String.class,String.class).newInstance(args.getString("smb"),"WORKGROUP",args.getString("user",""),args.getString("user","").isEmpty()?"":"test-password");
                 try{session.getClass().getMethod("list",String.class).invoke(session,args.getString("smb"));}finally{session.getClass().getMethod("close").invoke(session);}
             }catch(Throwable detail){log("SMB_DIAGNOSTIC "+android.util.Log.getStackTraceString(detail));}

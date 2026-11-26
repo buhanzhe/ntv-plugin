@@ -119,10 +119,11 @@ public class Probe extends Instrumentation {
                 ui(()->((android.view.inputmethod.InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0));
                 log("CAPTURE connection");Thread.sleep(2000);result=Activity.RESULT_OK;return;
             }
-            check(button(root,"选择目录")==null,"modern directory picker hidden on old Android");
+            check(button(root,"添加文件夹")==null,"modern directory picker hidden on old Android");
             row("本机存储");row("Android");row("data");row("xiao.bu.filebrowserprobe");row("files");loaded();
             check(list().getCount()==2,"local video filtering and subdirectory (text file hidden)");
             row("sample.mp4");playback("local");back();check(video()==null,"local return releases player");
+            if(Boolean.parseBoolean(args.getString("localOnly"))){result=Activity.RESULT_OK;return;}
             if(Boolean.parseBoolean(args.getString("perf")))performance();
             boolean skipScan=Boolean.parseBoolean(args.getString("skipScan"));
             if(skipScan){ui(()->{try{Method method=plugin.getClass().getDeclaredMethod("connectForm",String.class,boolean.class);method.setAccessible(true);method.invoke(plugin,args.getString("smb"),false);}catch(Exception e){throw new RuntimeException(e);}});}else{

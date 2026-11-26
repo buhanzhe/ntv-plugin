@@ -1,0 +1,10 @@
+{
+  "serial": "ANDROID17_DEVICE",
+  "sdk": 37,
+  "plugin_sha256": "ee2c52b1c8704f112df9601565f74985652ce2e104960f2ddeb18959115caecd",
+  "phases": [
+    "cancel"
+  ],
+  "result": "PASS",
+  "limitation": null
+}
