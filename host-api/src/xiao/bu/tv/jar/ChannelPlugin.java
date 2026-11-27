@@ -62,6 +62,9 @@ public interface ChannelPlugin {
         default void episodes() { }
         default boolean hasRoutes() { return false; }
         default void routes() { }
+        /** Null when the current video cannot be saved. */
+        default Boolean favoriteState() { return null; }
+        default void toggleFavorite() { }
         default String quality() { return ""; }
         default org.json.JSONArray trackOptions() { return new org.json.JSONArray(); }
         default void selectTrack(String id) { }
@@ -86,6 +89,8 @@ public interface ChannelPlugin {
         default boolean showEpisodes() { return false; }
         default boolean hasPlaybackRoutes() { return false; }
         default void showPlaybackRoutes() { }
+        default Boolean playbackFavoriteState() { return null; }
+        default void togglePlaybackFavorite() { }
         /** Return true to handle the error after the host restores this page. */
         default boolean onVodPlaybackFailed(String reason) { return false; }
     }

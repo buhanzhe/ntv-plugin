@@ -9,6 +9,12 @@ import java.io.*;
 public final class SearchFanoutTest {
     static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
     public static void main(String[] args) throws Exception {
+        String series = BoxSearchTitle.normalize("锦墨风华：穿越后我踹了太子");
+        check(BoxSearchTitle.rank(series, "锦墨风华 : 穿越后我踹了太子") == 0, "Exact title missed an alternate separator");
+        check(BoxSearchTitle.rank(series, "锦墨风华：穿越后我踹了太子 第 1 集") == 1, "Title prefix is not preferred");
+        check(BoxSearchTitle.rank(series, "短剧 · 锦墨风华：穿越后我踹了太子 · 合集") == 2, "Full title inside a label was missed");
+        check(BoxSearchTitle.rank(series, "王亚民 - 穿越") == 3, "Partial keyword outranked a title match");
+        check(BoxSearchTitle.rank(BoxSearchTitle.normalize("ＭＶ 2"), "mv2") == 0, "Width and case normalization");
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
             AtomicInteger active = new AtomicInteger(), maximum = new AtomicInteger();

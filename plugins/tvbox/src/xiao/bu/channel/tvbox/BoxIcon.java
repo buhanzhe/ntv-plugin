@@ -11,6 +11,8 @@ import android.graphics.drawable.Drawable;
 
 /** Draw in destination pixels: no scaled 24px path mask or bitmap is reused. */
 final class BoxIcon extends Drawable {
+    static final int CHEVRON_DOWN = 11;
+
     private final int kind;
     private final boolean stateful;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -45,7 +47,7 @@ final class BoxIcon extends Drawable {
             for(int a=3;a<=14;a+=11)for(int b=3;b<=14;b+=11){rect.set(x(a),y(b),x(a+7),y(b+7));canvas.drawRoundRect(rect,2*unit,2*unit,paint);}
         }else if(kind==5){move(14.5f,4.5f);line(7,12);line(14.5f,19.5f);canvas.drawPath(path,paint);}
         else if(kind==10){move(9.5f,4.5f);line(17,12);line(9.5f,19.5f);canvas.drawPath(path,paint);}
-        else if(kind==11){move(4.5f,9);line(12,16.5f);line(19.5f,9);canvas.drawPath(path,paint);}
+        else if(kind==CHEVRON_DOWN){move(4.5f,8.25f);line(12,15.75f);line(19.5f,8.25f);canvas.drawPath(path,paint);}
         else if(kind==7){move(7,4);line(20,12);line(7,20);path.close();paint.setStyle(Paint.Style.FILL);canvas.drawPath(path,paint);}
         else if(kind==8){move(3,4);line(21,4);line(14,12);line(14,19);line(10,21);line(10,12);path.close();canvas.drawPath(path,paint);}
         else if(kind==9){

@@ -41,6 +41,14 @@ public final class BoxConfigTest {
         if (!decode(wrap(ENCRYPTED_REPOSITORIES)).getJSONArray("urls").getJSONObject(0)
                 .getString("url").equals("./child.json"))
             throw new AssertionError("Encrypted repository envelope");
+        org.json.JSONArray python = decode("\ufeff# 编目\r\n"
+                + "py_hongguo|红果[py]|type: 3|api: https://example.test/hongguo.py\r\n"
+                + "片库|粤语 | 电影|type: 3|api: ./含 空格.PY?version=2#source\n"
+                + "invalid|示例|type: 3|api: ./crawler.js\n").getJSONArray("sites");
+        if (python.length() != 2 || python.getJSONObject(0).getInt("type") != 3
+                || !python.getJSONObject(1).getString("name").equals("粤语 | 电影")
+                || !python.getJSONObject(1).getString("api").equals("./含 空格.PY?version=2#source"))
+            throw new AssertionError("Python text source list");
         reject("<html>not a config</html>");
         reject("242");
         reject("2423zz");

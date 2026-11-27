@@ -1,5 +1,6 @@
 """Build the optional nTv TVBox channel and Android Python runtime JARs."""
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -19,6 +20,10 @@ PYTHON_VERSION = "3.14.8"
 PYTHON_HASH = "11324313957da3736f44e90257304d288864321a4dd376ed0cc35a54eacf9a33"
 GSON_HASH = "4241c14a7727c34feea6507ec801318a3d4a90f070e4525681079fb94ee4c593"
 LIBRARIES = ["libcrypto_python.so", "libssl_python.so", "libsqlite3_python.so", "libpython3.14.so"]
+PYCRYPTODOME_URL = ("https://files.pythonhosted.org/packages/8e/a6/"
+                    "8452177684d5e906854776276ddd34eca30d1b1e15aa1ee9cefc289a33f5/"
+                    "pycryptodome-3.23.0.tar.gz")
+PYCRYPTODOME_HASH = "447700a657182d60338bab09fdb27518f8856aecd80ae4c6bdddb67ff5da44ef"
 
 
 def run(*command):
@@ -61,6 +66,58 @@ def python_arm64(output, ndk):
         "-Wl,-z,max-page-size=16384", "-I" + str(sdk / "include/python3.14"),
         PLUGINS / "python/bridge.c", sdk / "lib/libpython3.14.so", "-o", sdk / "lib/libntvpython.so")
     return sdk
+
+
+def android_crypto(output, clang, target_flags, bits, link_flags):
+    """Compile the portable PyCryptodome modules for Android's embedded Python."""
+    platform_flags = ["-DHAVE_POSIX_MEMALIGN", "-DHAVE_UINT128"] if bits == 64 else ["-DHAVE_MEMALIGN"]
+    archive = output / "pycryptodome-3.23.0.tar.gz"
+    download(archive, PYCRYPTODOME_URL, PYCRYPTODOME_HASH)
+    with tempfile.TemporaryDirectory(dir=output, prefix="android-crypto-") as folder:
+        root = Path(folder)
+        with tarfile.open(archive) as source:
+            for member in source:
+                parts = Path(member.name).parts
+                if not member.isfile() or len(parts) < 2 or ".." in parts or Path(member.name).is_absolute():
+                    continue
+                target = root.joinpath(*parts[1:])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with source.extractfile(member) as data, target.open("wb") as file:
+                    shutil.copyfileobj(data, file)
+        setup = ast.parse((root / "setup.py").read_text(encoding="utf-8"))
+        extensions = next(node.value.elts for node in setup.body if isinstance(node, ast.Assign)
+                          and any(isinstance(name, ast.Name) and name.id == "ext_modules" for name in node.targets))
+        packages = root / "lib"
+        raw_api = packages / "Crypto/Util/_raw_api.py"
+        source = raw_api.read_text(encoding="utf-8")
+        # Android's embedded libpython may not be visible through the process handle.
+        buffer_api = ("    _PyObject_GetBuffer = ctypes.pythonapi.PyObject_GetBuffer\n"
+                      "    _PyBuffer_Release = ctypes.pythonapi.PyBuffer_Release")
+        android_buffer_api = (
+            "    pythonapi = ctypes.pythonapi\n"
+            "    if not hasattr(pythonapi, 'PyObject_GetBuffer'):\n"
+            "        libname = 'libpython%d.%d.so' % sys.version_info[:2]\n"
+            "        pythonapi = ctypes.PyDLL(os.path.join(sys.prefix, 'lib', libname))\n"
+            "    _PyObject_GetBuffer = pythonapi.PyObject_GetBuffer\n"
+            "    _PyBuffer_Release = pythonapi.PyBuffer_Release")
+        if buffer_api not in source:
+            raise ValueError("Unexpected PyCryptodome buffer API")
+        raw_api.write_text(source.replace(buffer_api, android_buffer_api, 1), encoding="utf-8")
+        for extension in extensions:
+            name = ast.literal_eval(extension.args[0])
+            if name in ("Crypto.Cipher._raw_aesni", "Crypto.Hash._ghash_clmul"):
+                continue
+            options = {option.arg: ast.literal_eval(option.value) for option in extension.keywords}
+            library = packages.joinpath(*name.split(".")).with_suffix(".abi3.so")
+            run(clang, *target_flags, "-shared", "-fPIC", "-O2",
+                "-DHAVE_STDINT_H", *platform_flags, f"-DSYS_BITS={bits}", "-DPYCRYPTO_LITTLE_ENDIAN",
+                *link_flags, "-o", library,
+                *("-I" + str(root / path) for path in options.get("include_dirs", [])),
+                *(root / path for path in options["sources"]))
+        for file in sorted((packages / "Crypto").rglob("*")):
+            if file.is_file() and "SelfTest" not in file.relative_to(packages).parts and file.suffix in (".py", ".so"):
+                yield "runtime/" + file.relative_to(packages).as_posix(), file
+        yield "runtime/licenses/pycryptodome.txt", root / "LICENSE.rst"
 
 
 def python_assets(output, sdk):
@@ -157,6 +214,12 @@ def build(args):
             sdk = args.runtime_dir if arm32 else python_arm64(output, args.ndk)
             for name, file in python_assets(output, sdk):
                 add(name, file.read_bytes())
+            if not arm32:
+                host = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
+                clang = args.ndk / "toolchains/llvm/prebuilt" / host / "bin" / ("clang.exe" if os.name == "nt" else "clang")
+                for name, file in android_crypto(output, clang, ["--target=aarch64-linux-android24"], 64,
+                                                 ["-Wl,--no-undefined,-z,max-page-size=16384"]):
+                    add(name, file.read_bytes())
         assets = folder / ("runtime" if is_python else "assets")
         for file in sorted(assets.rglob("*")):
             if file.is_file() and "__pycache__" not in file.parts:

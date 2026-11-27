@@ -52,26 +52,21 @@ final class BoxFavorites {
         return null;
     }
 
-    void toggle(String siteKey, String siteName, JSONObject item) {
-        Entry entry = find(siteKey, item.optString("vod_id"));
+    boolean toggle(String siteKey, String siteName, String vodId, String title) {
+        Entry entry = find(siteKey, vodId);
         if (entry != null) {
-            remove(entry);
-            return;
+            entries.remove(entry);
+            save();
+            return false;
         }
         try {
-            JSONObject saved = new JSONObject()
-                    .put("vod_id", item.getString("vod_id"))
-                    .put("vod_name", item.optString("vod_name"));
+            JSONObject saved = new JSONObject().put("vod_id", vodId).put("vod_name", title);
             entries.add(0, new Entry(siteKey, siteName, saved));
             save();
+            return true;
         } catch (JSONException invalid) {
             throw new IllegalArgumentException("收藏条目无效", invalid);
         }
-    }
-
-    void remove(Entry entry) {
-        entries.remove(entry);
-        save();
     }
 
     private void save() {

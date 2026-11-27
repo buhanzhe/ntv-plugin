@@ -91,6 +91,10 @@ def dispatch(data):
             if not isinstance(result, dict):
                 raise TypeError("Python spider must return a dict")
             return json.dumps({"result": result}, ensure_ascii=False, allow_nan=False).encode()
+        except ModuleNotFoundError as error:
+            name = error.name or ""
+            detail = "（" + name + "）" if name and all(part.isidentifier() for part in name.split(".")) else ""
+            return json.dumps({"error": "Python 爬虫缺少依赖" + detail}, ensure_ascii=False).encode()
         except Exception as error:
             return json.dumps({"error": "Python: " + type(error).__name__}, ensure_ascii=False).encode()
         finally:

@@ -17,7 +17,7 @@ for name in ['json.jar','okhttp.jar','okio.jar']:
     assert hashlib.sha256(target.read_bytes()).hexdigest()==info['sha256'],name
     libraries.append(target)
 classpath=os.pathsep.join(map(str,libraries))
-sources=[ROOT/'plugins/tvbox/src/xiao/bu/channel/tvbox'/n for n in ['SearchFanout.java','SpiderJarCache.java','MusicSearch.java','BoxHttp.java']]
+sources=[ROOT/'plugins/tvbox/src/xiao/bu/channel/tvbox'/n for n in ['SearchFanout.java','BoxSearchTitle.java','SpiderJarCache.java','MusicSearch.java','BoxHttp.java']]
 sources.append(Path(__file__).with_name('SearchFanoutTest.java'))
 sources.extend(Path(__file__).with_name('stubs').rglob('*.java'))
 subprocess.run([str(JAVA/'javac'),'-encoding','UTF-8','--release','8','-cp',classpath,'-d',str(OUT),*map(str,sources)],check=True)

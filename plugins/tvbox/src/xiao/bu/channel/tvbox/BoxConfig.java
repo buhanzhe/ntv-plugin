@@ -8,15 +8,23 @@ import java.util.regex.Pattern;
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 final class BoxConfig {
     private static final Pattern ENVELOPE = Pattern.compile("[A-Za-z0-9]{8}\\*\\*");
 
+    private static final Pattern PYTHON_SOURCE = Pattern.compile(
+            "^([^|]+)\\|(.+?)\\|\\s*type\\s*:\\s*3\\s*\\|\\s*api\\s*:\\s*(.+)$",
+            Pattern.CASE_INSENSITIVE);
+
     static JSONObject decode(byte[] data) throws Exception {
         String text = new String(data, "UTF-8").trim();
         if (text.startsWith("\ufeff")) text = text.substring(1).trim();
         if (text.startsWith("{")) return new JSONObject(text);
+        JSONObject sites = decodePythonList(text);
+        if (sites != null) return sites;
         // Some providers append an ASCII envelope to an image payload.
         String raw = new String(data, "ISO-8859-1").trim();
         Matcher envelope = ENVELOPE.matcher(raw);
@@ -25,6 +33,27 @@ final class BoxConfig {
         if (text.startsWith("2423")) text = decrypt(text.replaceAll("\\s+", "")).trim();
         if (!text.startsWith("{")) throw new IOException("地址未返回 TVBox 配置");
         return new JSONObject(text);
+    }
+
+    private static JSONObject decodePythonList(String text) throws JSONException {
+        if (text.indexOf('|') < 0) return null;
+        JSONArray sites = new JSONArray();
+        for (String line : text.split("\\r?\\n")) {
+            Matcher source = PYTHON_SOURCE.matcher(line.trim());
+            if (!source.matches()) continue;
+            String key = source.group(1).trim(), name = source.group(2).trim(), api = source.group(3).trim();
+            if (key.isEmpty() || name.isEmpty() || !isPython(api)) continue;
+            sites.put(new JSONObject().put("key", key).put("name", name).put("type", 3).put("api", api));
+            if (sites.length() >= 600) break;
+        }
+        return sites.length() == 0 ? null : new JSONObject().put("sites", sites);
+    }
+
+    static boolean isPython(String api) {
+        int query = api.indexOf('?'), fragment = api.indexOf('#');
+        int end = query < 0 ? api.length() : query;
+        if (fragment >= 0) end = Math.min(end, fragment);
+        return api.substring(0, end).toLowerCase(Locale.US).endsWith(".py");
     }
 
     private static String decrypt(String text) throws Exception {

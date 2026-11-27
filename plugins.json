@@ -26,8 +26,8 @@
         {
           "file": "tvbox.jar",
           "url": "https://github.com/buhanzhe/ntv-plugin/releases/download/v1.0.5/tvbox.jar",
-          "sha256": "dfcd816856d8d641c16a997fee82bdd64c57ca89097bcd61b76ba2aceeb3959e",
-          "bytes": 1129926,
+          "sha256": "8769e12d924364a044a46ea20f586fb018dff5155c0bc5801c21f850e32d8b5d",
+          "bytes": 3777131,
           "version": "7",
           "minSdk": 14,
           "abis": []
@@ -42,8 +42,8 @@
         {
           "file": "python-arm32.jar",
           "url": "https://github.com/buhanzhe/ntv-plugin/releases/download/v1.0.5/python-arm32.jar",
-          "sha256": "dc0292b8975882e2d2fdeb6e4ea9d9a3ec451117f29f7dbb8889a2a610029818",
-          "bytes": 9977250,
+          "sha256": "89e26a20fddc6315ac91f3a9cb346230ef23cd84380ac4ee51dffe8df7673cb9",
+          "bytes": 11388802,
           "version": "2",
           "minSdk": 14,
           "abis": [
@@ -54,8 +54,8 @@
         {
           "file": "python-arm64.jar",
           "url": "https://github.com/buhanzhe/ntv-plugin/releases/download/v1.0.5/python-arm64.jar",
-          "sha256": "8ea75b30123035909e149c694598c4c816b6c15c7caa5b3d4c5ead6d4c98b6c4",
-          "bytes": 11173405,
+          "sha256": "6c4b9e48f750a5542849112fb28d74c59123cb592d3a46e66c48a5cd13b78a76",
+          "bytes": 12393856,
           "version": "2",
           "minSdk": 24,
           "abis": [

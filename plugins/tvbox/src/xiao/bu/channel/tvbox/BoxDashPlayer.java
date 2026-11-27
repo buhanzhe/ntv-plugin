@@ -49,7 +49,8 @@ final class BoxDashPlayer extends FrameLayout {
     private int width, height;
 
     BoxDashPlayer(BlUi ui, ChannelPlugin.PlayerUiHost host, BoxHttp http, BoxSource source,
-                  String url, JSONObject headers, String title, Runnable episodes, Runnable routes, Failure onFailure) {
+                  String url, JSONObject headers, String title, Runnable episodes, Runnable routes,
+                  ChannelPlugin.NativePage page, Runnable playbackStarted, Failure onFailure) {
         super(ui.context);
         setBackgroundColor(0xff000000);
         setContentDescription("TVBox 播放器");
@@ -84,6 +85,8 @@ final class BoxDashPlayer extends FrameLayout {
             public void episodes() { episodes.run(); }
             public boolean hasRoutes() { return routes != null; }
             public void routes() { if (routes != null) routes.run(); }
+            public Boolean favoriteState() { return !closed && rendered && width > 0 ? page.playbackFavoriteState() : null; }
+            public void toggleFavorite() { if (favoriteState() != null) page.togglePlaybackFavorite(); }
             public String quality() { return height>0?width+"×"+height:""; }
             public org.json.JSONArray trackOptions() { return BoxDashPlayer.this.trackOptions(); }
             public void selectTrack(String id) { BoxDashPlayer.this.selectTrack(id); }
@@ -116,6 +119,7 @@ final class BoxDashPlayer extends FrameLayout {
             @Override public void onPlayerStateChanged(boolean ready, int state) {
                 if (closed) return;
                 describeVideo();
+                if (ready && state == Player.STATE_READY) playbackStarted.run();
                 if (state == Player.STATE_ENDED) {
                     wantPlaying = false;
                     controls.show();

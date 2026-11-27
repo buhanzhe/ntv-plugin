@@ -76,6 +76,7 @@ final class BoxHomePage extends FrameLayout {
         feature.addView(title, new LinearLayout.LayoutParams(-1, -2));
         facts = featureLabel(22, 1, BoxUi.TEXT, 22);
         description = featureLabel(25, 2, BoxUi.TEXT, 12);
+        description.setMinLines(2);
         hint = featureLabel(18, 1, BoxUi.SUB, 24);
         play = ui.homeButton("开始播放", true);
         Drawable icon = ui.navigationIcon(7);
@@ -170,7 +171,6 @@ final class BoxHomePage extends FrameLayout {
     void updateDescription(int position, String summary) {
         if (position != selected) return;
         description.setText(summary);
-        description.setVisibility(summary.isEmpty() ? GONE : VISIBLE);
     }
 
     boolean focusFeature() {

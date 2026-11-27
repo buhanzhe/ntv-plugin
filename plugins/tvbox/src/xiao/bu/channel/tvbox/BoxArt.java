@@ -29,6 +29,8 @@ final class BoxArt {
     interface Ready { void image(Bitmap bitmap); }
     private static final int DOWNLOAD_LIMIT = 3 * 1024 * 1024;
     private static final long FAILED_RETRY_MS = 12000L;
+    private final android.content.Context context;
+    private final ClassLoader assets;
     private final BoxHttp http;
     private final int thumbnailEdge;
     private final boolean constrained;
@@ -126,7 +128,9 @@ final class BoxArt {
         }
     }
 
-    BoxArt(BoxHttp http, int thumbnailEdge) {
+    BoxArt(android.content.Context context, ClassLoader assets, BoxHttp http, int thumbnailEdge) {
+        this.context = context.getApplicationContext();
+        this.assets = assets;
         this.http = http.forArtwork();
         this.thumbnailEdge = thumbnailEdge;
         constrained = android.os.Build.VERSION.SDK_INT <= 19;
@@ -334,7 +338,8 @@ final class BoxArt {
                 BitmapFactory.Options options = new BitmapFactory.Options();
                 options.inJustDecodeBounds = true;
                 BitmapFactory.decodeByteArray(data, 0, data.length, options);
-                if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+                if (options.outWidth <= 0 || options.outHeight <= 0)
+                    return BoxHeif.decode(context, assets, data, edge);
                 options.inSampleSize = 1;
                 long pixels=Math.min(2000000,Runtime.getRuntime().maxMemory()/64);
                 float target = edge * (constrained && !request.wide ? 1.55f : 2f);
@@ -346,7 +351,7 @@ final class BoxArt {
                 options.inPreferredConfig = constrained && !request.wide && edge <= 256
                         && "image/jpeg".equals(options.outMimeType) ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888;
                 Bitmap decoded=BitmapFactory.decodeByteArray(data,0,data.length,options);
-                if(decoded==null)return null;
+                if(decoded==null)return BoxHeif.decode(context, assets, data, edge);
                 int longest=Math.max(decoded.getWidth(),decoded.getHeight());
                 if(longest<=edge)return decoded;
                 float scale=(float)edge/longest;

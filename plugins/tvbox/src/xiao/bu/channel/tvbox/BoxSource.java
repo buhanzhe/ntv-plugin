@@ -90,7 +90,7 @@ final class BoxSource implements Closeable {
             jar = data.optString("jar");
         }
         boolean java() { return type == 3 && api.startsWith("csp_"); }
-        boolean python() { return type == 3 && api.split("[?#]", 2)[0].endsWith(".py"); }
+        boolean python() { return type == 3 && BoxConfig.isPython(api); }
         boolean javascript() { return type == 3 && api.split("[?#]", 2)[0].endsWith(".js"); }
         boolean executable() { return java() || python() || javascript(); }
         boolean supported() { return !api.isEmpty() && (type == 0 || type == 1 || type == 4 || executable()); }
@@ -210,16 +210,42 @@ final class BoxSource implements Closeable {
             if (result == null) throw empty;
         }
         String url = playbackUrl(result.opt("url"));
-        result.put("url", url);
+        JSONObject headers = new JSONObject();
+        url = unpackPlayerUrl(url, result, headers);
         if (result.optInt("parse") != 0 || result.optInt("jx") != 0) {
-            JSONObject parsed = parse(flag, result.optString("playUrl"), url);
-            if (parsed.opt("header") == null && result.opt("header") != null) parsed.put("header", result.opt("header"));
-            result = parsed;
+            result = parse(flag, result.optString("playUrl"), url);
+            url = unpackPlayerUrl(playbackUrl(result.opt("url")), result, headers);
         }
-        String resolved = BoxHttp.resolve(resource(current.type == 3 ? origin : current.api),
-                playbackUrl(result.opt("url")));
+        String resolved = BoxHttp.resolve(resource(current.type == 3 ? origin : current.api), url);
+        if (headers.length() != 0) result.put("header", headers);
         result.put("url", BoxHttp.url(resolved).uri().toString());
         return result;
+    }
+
+    private static String unpackPlayerUrl(String url, JSONObject result, JSONObject headers) throws Exception {
+        for (String key : new String[]{"headers", "header"}) {
+            JSONObject values = result.optJSONObject(key);
+            if (values == null && result.opt(key) instanceof String && !result.optString(key).trim().isEmpty())
+                values = new JSONObject(result.optString(key));
+            mergeHeaders(headers, values);
+        }
+        int offset = BoxImageHeaders.offset(url);
+        if (offset < 0) return url;
+        mergeHeaders(headers, BoxImageHeaders.parse(url));
+        return url.substring(0, offset);
+    }
+
+    private static void mergeHeaders(JSONObject target, JSONObject values) throws Exception {
+        if (values == null) return;
+        for (java.util.Iterator<String> keys = values.keys(); keys.hasNext();) {
+            String key = keys.next(), previous = null;
+            for (java.util.Iterator<String> names = target.keys(); names.hasNext();) {
+                String name = names.next();
+                if (name.equalsIgnoreCase(key)) { previous = name; break; }
+            }
+            if (previous != null) target.remove(previous);
+            if (!values.isNull(key)) target.put(key, values.getString(key));
+        }
     }
 
     String playbackUrl(Object value) throws Exception {

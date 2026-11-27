@@ -9,7 +9,7 @@
 
 ARM32 安装包已在 Android 4.0.2 API 14 的 ARMv7 模拟器验证。测试包含在设备上运行 Python、使用证书校验的 HTTPS、执行 TVBox Python 爬虫和 Ku9 `.py`。
 
-TVBox 配置中的 type 3 `.py` 通过同一运行时执行。爬虫公开 `Spider` 类，支持 `init(extend)`、`homeContent`、`homeVideoContent`、`categoryContent`、`detailContent`、`searchContent` 和 `playerContent`。运行时包含基础 `base.spider`、`requests`、`beautifulsoup4` 和标准库。爬虫必须提供所需的其他兼容依赖。
+TVBox 通过同一运行时执行 type 3 `.py` 爬虫，支持 JSON 配置和 `key|name|type: 3|api: 地址.py` 文本列表。运行时提供 `base.spider`、`requests`、`beautifulsoup4`、PyCryptodome（`Crypto`）和标准库。
 
 Ku9 可以直接使用在线 `.py`，或在「插件管理 → Ku9 Python 脚本」上传文件后使用 `http://A/文件名.py?id=1`。脚本入口是 `main(item)`。用 `item["url"]` 读取原频道地址、`item["params"]` 读取查询参数、`item["name"]` 读取频道名。返回 URL 字符串或 Ku9 结果字典，例如：
 
