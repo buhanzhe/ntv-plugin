@@ -3,6 +3,7 @@ package xiao.bu.channel.tvbox;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -58,11 +59,14 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private static final int VIDEO_COLUMNS = 4;
     private static final int MAX_HISTORY = 16;
     private static final int HEADER_ITEM_HEIGHT = 48;
+    private static final int CHOICE_ROW_GAP = 10;
+    private static final boolean KITKAT = android.os.Build.VERSION.SDK_INT <= 19;
 
     private enum Tab { SITES, HOME, CATEGORIES, SEARCH }
 
     private interface Load { Runnable run() throws Exception; }
     private interface Submit { void accept(String text); }
+    private interface OpenEpisode { void open(int index); }
 
     private static final class Screen {
         final Tab tab;
@@ -111,6 +115,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         final BoxSource.Site site; final JSONObject item;
         SearchHit(BoxSource.Site site, JSONObject item) { this.site = site; this.item = item; }
     }
+
+    private static final class CardPresentation {
+        final String title, facts, remark, description, artwork;
+        CardPresentation(String title, String facts, String remark, String description, String artwork) {
+            this.title = title;
+            this.facts = facts;
+            this.remark = remark;
+            this.description = description;
+            this.artwork = artwork;
+        }
+    }
     private static final class SearchRun {
         final String query;
         final List<BoxSource.Site> sites, failures = new ArrayList<>();
@@ -128,15 +143,62 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private static final class PlayLine {
         final String name;
-        final List<Choice> episodes = new ArrayList<>();
+        final List<Episode> episodes = new ArrayList<>();
 
         PlayLine(String name) {
             this.name = name;
         }
     }
 
-    private PlayLine playbackLine;
-    private int playbackEpisode;
+    private static final class Episode {
+        final BoxSource.Site site;
+        final String title, flag, id, playerTitle;
+
+        Episode(BoxSource.Site site, String title, String flag, String id, String playerTitle) {
+            this.site = site;
+            this.title = title;
+            this.flag = flag;
+            this.id = id;
+            this.playerTitle = playerTitle;
+        }
+    }
+
+    private static final class RoutePlayback {
+        final Screen owner;
+        final String title;
+        final List<PlayLine> lines;
+        final Set<Integer> failed;
+        final int selected, episode;
+
+        RoutePlayback(Screen owner, String title, List<PlayLine> lines, int selected, int episode) {
+            this(owner, title, lines, selected, episode, new HashSet<>());
+        }
+
+        private RoutePlayback(Screen owner, String title, List<PlayLine> lines, int selected, int episode,
+                Set<Integer> failed) {
+            this.owner = owner;
+            this.title = title;
+            this.lines = lines;
+            this.selected = selected;
+            this.episode = episode;
+            this.failed = failed;
+        }
+
+        RoutePlayback at(int line, int item) {
+            return new RoutePlayback(owner, title, lines, line, item, failed);
+        }
+
+        int matchingEpisode(int route) {
+            String name = lines.get(selected).episodes.get(episode).title;
+            List<Episode> alternatives = lines.get(route).episodes;
+            for (int i = 0; i < alternatives.size(); i++) {
+                if (name.equals(alternatives.get(i).title)) return i;
+            }
+            return episode < alternatives.size() ? episode : -1;
+        }
+    }
+
+    private RoutePlayback playback;
     private Dialog episodeDialog;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -148,9 +210,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private final List<Future<?>> recommendationJobs=new ArrayList<>();
     private final Set<BoxSource> recommendationSessions=Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<BoxSource,Boolean>());
     private Runnable previewRequest;
+    private Runnable artworkPreview;
     private Future<?> previewJob;
     private BoxSource previewSession;
     private final BoxDataCache pages=new BoxDataCache();
+    private final ExecutorService categoryWorker = Executors.newSingleThreadExecutor(task -> new Thread(() -> {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+        task.run();
+    }, "tvbox-categories"));
+    private final Runnable categoryWarmup = this::prefetchCategories;
+    private Future<?> categoryJob;
+    private BoxSource categorySession;
     private int recommendationEpoch;
     private final int searchConcurrency = android.os.Build.VERSION.SDK_INT < 21 ? 2 : 3;
     private final ThreadPoolExecutor searches = new ThreadPoolExecutor(searchConcurrency, searchConcurrency,
@@ -170,6 +240,10 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private FrameLayout container;
     private ImageView backdropArt;
     private ImageView ambientArt;
+    private Bitmap ambientBlur, browsingScene, shownAmbient;
+    private boolean cinemaScene;
+    private final Drawable browsingShade = BoxBackdrop.scrim(false);
+    private final Drawable cinemaShade = BoxBackdrop.scrim(true);
     private View backdropShade;
     private BoxGlass controlGlass;
     private String backdropKey="";
@@ -180,9 +254,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private TextView heading, status;
     private HorizontalScrollView categoryTabs;
     private LinearLayout categoryButtons;
+    private BoxSource.Site headerSite;
+    private JSONArray headerCategories;
+    private boolean headerHome;
     private GridView grid;
     private BoxHomePage homePage;
     private Dialog homeMenu;
+    private FrameLayout stationPicker;
     private Button homeSite, homeSearch, homeFavorites;
     private final Map<String, BoxSource.Site> knownSites = new HashMap<>();
     private BoxFavorites favorites;
@@ -219,7 +297,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (!(base instanceof VodHost)) throw new IOException("请更新 nTv 以运行 TVBox");
         host = (VodHost) base;
         this.context = context;
-        ui = new BoxUi(context,assets,(OkHttpClient)host.httpClient());
+        ui = new BoxUi(context);
         http = new BoxHttp((OkHttpClient) host.httpClient());
         browseHttp = http.isolated();
         source = new BoxSource(context, host, assets, browseHttp);
@@ -227,7 +305,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         homeLoads.allowCoreThreadTimeOut(true);
         int screenWidth = Math.max(context.getResources().getDisplayMetrics().widthPixels,
                 context.getResources().getDisplayMetrics().heightPixels);
-        int thumbnailEdge = android.os.Build.VERSION.SDK_INT <= 19
+        int thumbnailEdge = KITKAT
                 ? Math.min(640, Math.max(320, screenWidth / 3)) : 640;
         art = new BoxArt(http, thumbnailEdge);
         container = new FrameLayout(context) {
@@ -355,6 +433,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             boolean quark = key.regionMatches(true, 0, "quark", 0, 5);
             main.post(() -> {
                 if (disposed) return;
+                cancelCategoryPrefetch();
                 homes.clear();pages.clear();cancelRecommendations();
                 if (pending != null) cancelPending();
                 boolean feedback = android.os.SystemClock.uptimeMillis() <= authorizationFeedbackUntil;
@@ -447,6 +526,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void openSite(BoxSource.Site site) {
         if (pending != null) return;
+        cancelCategoryPrefetch();
         cancelRecommendations();
         if (site.ext.isEmpty() && site.name.contains("请勿") && site.name.contains("广告")) {
             SiteHome notice = new SiteHome(site, null, null, null, site.name);
@@ -596,9 +676,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     return;
                 }
                 if (model.notice.isEmpty()) message("站点暂无推荐影片");
-                if (model.categories != null && model.categories.length() > 0) {
-                    categoryScreen(model).render.run();
-                } else {
+                if (categoryButtons.getChildCount() == 1) {
                     primary = action(body, "搜索影片", () -> switchTab(Tab.SEARCH));
                 }
             }
@@ -655,7 +733,13 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     private void showHomePreview(Screen owner, BoxSource.Site site, JSONObject item, int position) {
         cancelHomePreview();
         List<String> pictures = homeArtwork(site, item);
-        backdrop(pictures, true);
+        if (KITKAT) {
+            artworkPreview = () -> {
+                artworkPreview = null;
+                if (!disposed && screen == owner && featuredItem == item && root.isShown()) backdrop(pictures, true);
+            };
+            main.postDelayed(artworkPreview, 130L);
+        } else backdrop(pictures, true);
         if (!canPlayDirectly(item) || music(site, item)) return;
         boolean needsSynopsis = synopsis(item).isEmpty();
         String key = siteKey(site) + "\ndetail\n" + item.optString("vod_id");
@@ -718,6 +802,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void cancelHomePreview() {
+        if (artworkPreview != null) main.removeCallbacks(artworkPreview);
+        artworkPreview = null;
         if (previewRequest != null) main.removeCallbacks(previewRequest);
         previewRequest = null;
         if (previewSession != null) previewSession.cancelRequests();
@@ -748,22 +834,35 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         heading.setVisibility(View.GONE);
         categoryTabs.setVisibility(View.VISIBLE);
         boolean home = screen.tab == Tab.HOME && screen.landing;
-        Button recommended = ui.categoryButton("推荐", home);
-        recommended.setSelected(selected.isEmpty());
-        recommended.setOnClickListener(view -> { if (!home && pending == null) openSite(model.site); });
-        if (home) linkHomeHeader(recommended);
-        categoryButtons.addView(recommended, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
-        Button active = recommended;
-        for (int i = 0; model.categories != null && i < Math.min(20, model.categories.length()); i++) {
-            JSONObject item = model.categories.optJSONObject(i);
-            if (item == null || item.optString("type_id").isEmpty()) continue;
-            String id = item.optString("type_id"), name = item.optString("type_name", id);
-            Button category = ui.categoryButton(name, home);
-            if (home) linkHomeHeader(category);
-            category.setSelected(id.equals(selected));
+        BoxSource.Site site = model.site;
+        if (headerSite != site || headerCategories != model.categories || headerHome != home) {
+            categoryButtons.removeAllViews();
+            headerSite = site;
+            headerCategories = model.categories;
+            headerHome = home;
+            addHeaderCategory("", "推荐", home, () -> { if (!home && pending == null) openSite(site); });
+            for (int i = 0; model.categories != null && i < Math.min(20, model.categories.length()); i++) {
+                JSONObject item = model.categories.optJSONObject(i);
+                if (item == null || item.optString("type_id").isEmpty()) continue;
+                String id = item.optString("type_id"), name = item.optString("type_name", id);
+                addHeaderCategory(id, name, home, () -> listing(site, name, id, "", 1, true));
+            }
+            for (int i = 20; model.categories != null && i < Math.min(120, model.categories.length()); i++) {
+                JSONObject item = model.categories.optJSONObject(i);
+                if (item == null || item.optString("type_id").isEmpty()) continue;
+                addHeaderCategory(null, "更多分类", home, () -> switchTab(Tab.CATEGORIES));
+                break;
+            }
+        }
+        Button active = (Button) categoryButtons.getChildAt(0);
+        for (int i = 0; i < categoryButtons.getChildCount(); i++) {
+            Button category = (Button) categoryButtons.getChildAt(i);
+            if (category.isLongClickable()) {
+                category.setOnLongClickListener(null);
+                category.setLongClickable(false);
+            }
+            category.setSelected(selected.equals(category.getTag()));
             if (category.isSelected()) active = category;
-            category.setOnClickListener(view -> listing(model.site, name, id, "", 1, true));
-            categoryButtons.addView(category, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
         }
         Button selectedButton = active;
         categoryTabs.post(() -> {
@@ -774,60 +873,101 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return active;
     }
 
-    private FrameLayout featurePanel(BoxSource.Site site, JSONObject video, String actionLabel, Runnable open) {
-            LinearLayout info = ui.vertical(), buttons = ui.horizontal();
-            TextView[] labels=new TextView[3];
-            ImageView background = ui.imageView();background.setScaleType(ImageView.ScaleType.FIT_CENTER);background.setBackgroundDrawable(ui.fill(0,0));
-            FrameLayout hero = new FrameLayout(context) {
-                private int appearance=-1;
-                @Override protected void onMeasure(int width, int height) {
-                    int w=View.MeasureSpec.getSize(width),h=View.MeasureSpec.getSize(height);
-                    int posterWidth=Math.min(ui.px(210),w/4);
-                    info.getLayoutParams().width = Math.min(Math.max(1,w-posterWidth-ui.px(48)), ui.px(680));
-                    background.getLayoutParams().width=posterWidth;
-                    int mode=h<ui.px(260)?0:h<ui.px(340)?1:2,key=mode*16+(h<ui.px(180)?1:0)+(h<ui.px(190)?2:0)+(h<ui.px(230)?4:0)+(h<ui.px(300)?8:0);
-                    if(key!=appearance&&labels[0]!=null){appearance=key;int font=mode==0?(h<ui.px(180)?48:56):68;if(labels[0].length()>10)font=Math.max(44,font-12);labels[0].setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(font));labels[0].setMaxLines(1);labels[1].setMaxLines(h<ui.px(300)?1:2);labels[1].setVisibility(h<ui.px(230)?View.GONE:View.VISIBLE);labels[2].setVisibility(h<ui.px(190)?View.GONE:View.VISIBLE);info.setPadding(ui.px(32),ui.px(mode==0?8:20),ui.px(24),ui.px(mode==0?8:20));}
-                    boolean summaryShown=labels[1]!=null&&labels[1].getParent()!=null&&labels[1].getVisibility()==View.VISIBLE;
-                    int gap=h<ui.px(180)?10:h<ui.px(220)||h<ui.px(300)&&summaryShown?12:24;
-                    ((LinearLayout.LayoutParams)buttons.getLayoutParams()).topMargin=ui.px(gap);
-                    super.onMeasure(width, height);
+    private void addHeaderCategory(String id, String name, boolean home, Runnable activate) {
+        Button category = ui.categoryButton(name, home);
+        category.setTag(id);
+        category.setOnClickListener(view -> activate.run());
+        if (home) linkHomeHeader(category);
+        categoryButtons.addView(category, new LinearLayout.LayoutParams(-2, ui.px(HEADER_ITEM_HEIGHT)));
+    }
+
+    private LinearLayout featurePanel(BoxSource.Site site, JSONObject video, String image) {
+        LinearLayout info = ui.vertical();
+        LinearLayout buttons = ui.horizontal();
+
+        String facts = metadata(video, "vod_class", "vod_year", "vod_remarks");
+        String station = shortSiteName(site.name);
+        TextView eyebrow = ui.text(station + (facts.isEmpty() ? "" : "  ·  " + facts), 20, BoxUi.SUB);
+        eyebrow.setSingleLine(true);
+        eyebrow.setEllipsize(TextUtils.TruncateAt.END);
+        info.addView(eyebrow, new LinearLayout.LayoutParams(-1, -2));
+
+        String name = videoName(video);
+        TextView title = ui.displayTitle(name);
+        title.setMaxLines(1);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams titleSize = new LinearLayout.LayoutParams(-1, -2);
+        titleSize.topMargin = ui.px(6);
+        info.addView(title, titleSize);
+
+        String description = synopsis(video).replaceFirst("^免费分享[\\s\\u00a0\\u3000]+", "").trim();
+        if (description.isEmpty()) description = metadata(video, "vod_area", "vod_class", "vod_actor");
+        TextView summary = ui.text(description, 22, BoxUi.TEXT);
+        summary.setEllipsize(TextUtils.TruncateAt.END);
+        summary.setLineSpacing(ui.px(4), 1);
+        LinearLayout.LayoutParams summarySize = new LinearLayout.LayoutParams(-1, -2);
+        summarySize.topMargin = ui.px(10);
+        if (!description.isEmpty()) info.addView(summary, summarySize);
+
+        boolean needsCategory = video.optString("vod_id").isEmpty() && currentSite != null;
+        Button search = needsCategory ? action(buttons, "浏览分类", () -> switchTab(Tab.CATEGORIES))
+                : action(buttons, "搜索同名", () -> chooseSearchSite(name));
+        LinearLayout.LayoutParams buttonSize = new LinearLayout.LayoutParams(-1, -2);
+        info.addView(buttons, buttonSize);
+
+        ImageView poster = ui.imageView();
+        poster.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        poster.setBackgroundDrawable(ui.fill(0, 0));
+        poster.setVisibility(View.GONE);
+        LinearLayout.LayoutParams artworkSize = new LinearLayout.LayoutParams(0, 0);
+        artworkSize.leftMargin = ui.px(24);
+
+        boolean longTitle = name.codePointCount(0, name.length()) > 16;
+        LinearLayout hero = new LinearLayout(context) {
+            private int density = -1;
+
+            @Override protected void onMeasure(int width, int height) {
+                // BoxPageLayout first measures the panel with the height available above the list.
+                if (MeasureSpec.getMode(height) == MeasureSpec.AT_MOST) {
+                    int available = MeasureSpec.getSize(height);
+                    boolean split = ((LinearLayout) getParent()).getOrientation() == HORIZONTAL;
+                    int mode = available < ui.px(204) ? 0 : available < ui.px(256) ? 1 : split ? 3 : 2;
+                    if (density != mode) {
+                        density = mode;
+                        int inset = ui.px(mode >= 2 ? 24 : mode == 1 ? 18 : 12);
+                        setPadding(ui.px(24), inset, ui.px(22), inset);
+                        int titleHeight = mode == 3 ? 50 : mode == 2 ? 60 : mode == 1 ? 48 : 38;
+                        title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.px(titleHeight - (longTitle ? 6 : 0)));
+                        title.setMaxLines(mode == 3 ? 2 : 1);
+                        summary.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.px(mode >= 2 ? 22 : 19));
+                        summary.setMaxLines(mode == 3 ? 5 : mode + 1);
+                        buttonSize.topMargin = ui.px(mode >= 2 ? 18 : 10);
+                    }
+                    Drawable picture = poster.getDrawable();
+                    if (poster.getVisibility() == View.VISIBLE && picture != null) {
+                        float ratio = (float) picture.getIntrinsicWidth() / picture.getIntrinsicHeight();
+                        int maxWidth = Math.min(ui.px(254), MeasureSpec.getSize(width) / 4);
+                        int maxHeight = Math.max(1, Math.min(ui.px(split ? 182 : 242),
+                                available - getPaddingTop() - getPaddingBottom()));
+                        artworkSize.width = Math.max(1, Math.min(maxWidth, Math.round(maxHeight * ratio)));
+                        artworkSize.height = Math.max(1, Math.round(artworkSize.width / ratio));
+                    }
                 }
-            };
-            hero.setBackgroundDrawable(ui.glass(0xaa253844, 24));
-            art.load(background, artwork(site, video));
-            FrameLayout.LayoutParams poster=new FrameLayout.LayoutParams(ui.px(210),-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-            poster.setMargins(0,ui.px(24),ui.px(24),ui.px(24));hero.addView(background,poster);
-            info.setGravity(Gravity.CENTER_VERTICAL);
-            info.setPadding(ui.px(32), ui.px(20), ui.px(24), ui.px(20));
-            String facts=metadata(video,"vod_class","vod_year","vod_remarks");
-            String sourceName=BlUi.plain(site.name).replaceFirst("^[^\\p{L}\\p{N}]+","").split("[|｜丨┃│¦]",2)[0].trim();
-            TextView eyebrow = ui.text(sourceName+(facts.isEmpty()?"":"  ·  "+facts), 21, BoxUi.SUB);
-            labels[2]=eyebrow;
-            eyebrow.setSingleLine(true); eyebrow.setEllipsize(TextUtils.TruncateAt.END);
-            info.addView(eyebrow, new LinearLayout.LayoutParams(-1, ui.px(30)));
-            TextView title = ui.displayTitle(videoName(video));
-            labels[0]=title;
-            if(videoName(video).codePointCount(0,videoName(video).length())>10)title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(64));
-            title.setMaxLines(2); title.setEllipsize(TextUtils.TruncateAt.END);
-            info.addView(title, new LinearLayout.LayoutParams(-1, -2));
-            String synopsis = BlUi.plain(video.optString("vod_content")).trim();
-            TextView summary = ui.text(synopsis.isEmpty() ? metadata(video, "vod_area", "vod_class", "vod_actor") : synopsis, 22, BoxUi.TEXT);
-            labels[1]=summary;
-            summary.setMaxLines(2); summary.setEllipsize(TextUtils.TruncateAt.END);
-            summary.setPadding(0, ui.px(10), 0, 0);
-            if (!summary.getText().toString().isEmpty()) info.addView(summary);
-            Button details = action(buttons, actionLabel, open);
-            details.setBackgroundDrawable(ui.primaryFocus(details)); details.setTextColor(ui.controlText());
-            details.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
-            details.setMinHeight(ui.px(60));
-            Button secondary=video.optString("vod_id").isEmpty()&&currentSite!=null?action(buttons,"浏览分类",()->switchTab(Tab.CATEGORIES)):action(buttons,"搜索同名",()->chooseSearchSite(videoName(video)));
-            secondary.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));secondary.setMinHeight(ui.px(60));
-            LinearLayout.LayoutParams actions = new LinearLayout.LayoutParams(-1, -2);
-            actions.topMargin=ui.px(24);
-            info.addView(buttons,actions);
-            hero.addView(info, new FrameLayout.LayoutParams(-1, -1));
-            primary = details;
-            return hero;
+                super.onMeasure(width, height);
+            }
+        };
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setBaselineAligned(false);
+        hero.setBackgroundDrawable(ui.glass(0x79303b47, 24));
+        hero.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+        hero.addView(poster, artworkSize);
+        if (!image.isEmpty()) {
+            art.load(poster, image, art.thumbnailEdge(), bitmap -> {
+                if (Math.min(bitmap.getWidth(), bitmap.getHeight()) >= 96) poster.setVisibility(View.VISIBLE);
+            });
+        }
+        primary = search;
+        return hero;
     }
 
     private void openVideo(BoxSource.Site site, JSONObject item) {
@@ -961,13 +1101,16 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             public View getView(int position, View reusable, ViewGroup parent) {
                 SearchHit hit = getItem(position);
                 BoxTile tile = reusable instanceof BoxTile ? (BoxTile) reusable : new BoxTile(ui);
-                ImageView cover = tile.bind(videoName(hit.item), hit.site.name,
+                String name = videoName(hit.item);
+                tile.bind(name, hit.site.name,
                         BlUi.plain(hit.item.optString("vod_remarks")), true);
-                tile.setContentDescription(hit.site.name + " · " + videoName(hit.item));
-                art.load(cover, artwork(hit.site, hit.item)); return tile;
+                tile.setContentDescription(hit.site.name + " · " + name);
+                tile.bindCover(art, artwork(hit.site, hit.item), tileEdge(cards, VIDEO_COLUMNS, true), KITKAT);
+                return tile;
             }
         };
         cards.setAdapter(run.adapter);
+        if (KITKAT) loadVisibleCovers(cards, false);
         cards.setOnItemClickListener((parent, view, index, id) -> {
             screen.selection = index;
             SearchHit hit = run.hits.get(index); detail(hit.site, hit.item);
@@ -1019,7 +1162,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         JSONObject values;
         try{values=search.isEmpty()?filterValues(site,type,model.filters):new JSONObject();}
         catch(Exception invalid){message("筛选条件无效");return;}
-        String cacheKey=siteKey(site)+"\n"+type+"\n"+page+"\n"+values;
+        String cacheKey=categoryCacheKey(site,type,page,values);
         JSONObject ready=search.isEmpty()?pages.get(cacheKey):null;
         if(ready!=null){showListing(model,label,type,search,values,page,ready,push);return;}
         load("正在加载列表…", () -> {
@@ -1027,6 +1170,80 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             JSONObject result=search.isEmpty()?source.category(type,page,values):source.search(search,page);
             return () -> {if(search.isEmpty())pages.put(cacheKey,result);showListing(model,label,type,search,values,page,result,push);};
         });
+    }
+
+    private static String categoryCacheKey(BoxSource.Site site, String id, int page, JSONObject filters) {
+        return siteKey(site) + "\n" + id + "\n" + page + "\n" + filters;
+    }
+
+    private void scheduleCategoryPrefetch() {
+        main.removeCallbacks(categoryWarmup);
+        if (!disposed && pending == null && currentSite != null && screen != null
+                && (screen.landing && screen.tab == Tab.HOME || screen.tab == Tab.CATEGORIES)) {
+            main.postDelayed(categoryWarmup, KITKAT ? 1150L : 650L);
+        }
+    }
+
+    private void prefetchCategories() {
+        SiteHome model = currentSite;
+        if (disposed || pending != null || !root.isShown() || model == null || model.categories == null
+                || categoryJob != null) return;
+        Map<String, JSONObject> uncached = new LinkedHashMap<>();
+        int maxWarm = KITKAT ? 3 : 20;
+        for (int i = 0; i < Math.min(20, model.categories.length()) && uncached.size() < maxWarm; i++) {
+            JSONObject item = model.categories.optJSONObject(i);
+            String id = item == null ? "" : item.optString("type_id");
+            if (id.isEmpty()) continue;
+            try {
+                JSONObject filters = filterValues(model.site, id, model.filters);
+                if (!pages.contains(categoryCacheKey(model.site, id, 1, filters))) uncached.put(id, filters);
+            } catch (Exception invalidFilter) {
+                // Opening a category explicitly will report invalid filters.
+            }
+        }
+        if (uncached.isEmpty()) return;
+        BoxSource session = source.fork();
+        categorySession = session;
+        categoryJob = categoryWorker.submit(() -> {
+            try {
+                session.select(model.site);
+                boolean[] prepared = {false};
+                for (Map.Entry<String, JSONObject> category : uncached.entrySet()) {
+                    if (Thread.currentThread().isInterrupted()) break;
+                    String id = category.getKey();
+                    JSONObject values = category.getValue();
+                    String key = categoryCacheKey(model.site, id, 1, values);
+                    if (pages.contains(key)) continue;
+                    try {
+                        JSONObject result = probeHome(session, true, id, values, prepared);
+                        String encoded = BoxDataCache.encode(result);
+                        if (encoded != null) main.post(() -> {
+                            if (categorySession == session) pages.putEncoded(key, encoded);
+                        });
+                    } catch (Exception | LinkageError unavailable) {
+                        if (Thread.currentThread().isInterrupted()) break;
+                    }
+                }
+            } catch (Exception | LinkageError unavailable) {
+                // Prefetch is opportunistic. The foreground load follows its normal error path.
+            } finally {
+                session.close();
+                main.post(() -> {
+                    if (categorySession == session) {
+                        categorySession = null;
+                        categoryJob = null;
+                    }
+                });
+            }
+        });
+    }
+
+    private void cancelCategoryPrefetch() {
+        main.removeCallbacks(categoryWarmup);
+        if (categoryJob != null) categoryJob.cancel(true);
+        if (categorySession != null) categorySession.cancelRequests();
+        categoryJob = null;
+        categorySession = null;
     }
     private void showListing(SiteHome model, String label, String type, String search,
             JSONObject filters, int page, JSONObject result, boolean push) {
@@ -1128,29 +1345,45 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private GridView videoGrid(BoxSource.Site site, List<JSONObject> videos, boolean poster) {
-        if (poster) {
+        boolean deferred = KITKAT;
+        if (poster && !deferred) {
             String firstCover = artwork(site, videos.get(0));
-            if (!firstCover.isEmpty()) backdrop(Collections.singletonList(firstCover), false);
+            if (!firstCover.isEmpty()) {
+                Screen owner = screen;
+                main.post(() -> {
+                    if (!disposed && screen == owner && root.isShown()) backdrop(Collections.singletonList(firstCover), false);
+                });
+            }
         }
         int columns = poster ? 5 : VIDEO_COLUMNS;
+        boolean portrait = poster && !MusicSearch.supports(site.api);
         GridView cards = ui.grid(columns);cards.setSelector(ui.fill(0,0));
         cards.setAdapter(new BaseAdapter() {
+            private final android.util.LruCache<Integer, CardPresentation> presentations = new android.util.LruCache<>(64);
             @Override public int getCount() { return videos.size(); }
             @Override public JSONObject getItem(int position) { return videos.get(position); }
             @Override public long getItemId(int position) { return position; }
             @Override public View getView(int position, View reusable, ViewGroup parent) {
-                JSONObject item = getItem(position);
                 BoxTile tile = reusable instanceof BoxTile ? (BoxTile) reusable : new BoxTile(ui);
-                String tag = item.optString("vod_tag");
-                String kind = "音乐".equals(item.optString("vod_type")) ? "音乐" : "action".equals(tag) || !item.optString("action").isEmpty() ? "操作"
-                        : "folder".equals(tag) || "cate".equals(tag) ? "目录" : "影片";
-                ImageView cover = tile.bind(videoName(item), metadata(item, "vod_year", "vod_area", "vod_class"),
-                        BlUi.plain(item.optString("vod_remarks")), poster && !MusicSearch.supports(site.api));
-                tile.setContentDescription(kind + " · " + videoName(item));
-                art.load(cover, artwork(site, item));
+                CardPresentation presentation = presentations.get(position);
+                if (presentation == null) {
+                    JSONObject item = getItem(position);
+                    String tag = item.optString("vod_tag");
+                    String kind = "音乐".equals(item.optString("vod_type")) ? "音乐"
+                            : "action".equals(tag) || !item.optString("action").isEmpty() ? "操作"
+                            : "folder".equals(tag) || "cate".equals(tag) ? "目录" : "影片";
+                    String name = videoName(item);
+                    presentation = new CardPresentation(name, metadata(item, "vod_year", "vod_area", "vod_class"),
+                            BlUi.plain(item.optString("vod_remarks")), kind + " · " + name, artwork(site, item));
+                    presentations.put(position, presentation);
+                }
+                tile.bind(presentation.title, presentation.facts, presentation.remark, portrait);
+                tile.setContentDescription(presentation.description);
+                tile.bindCover(art, presentation.artwork, tileEdge(cards, columns, portrait), deferred);
                 return tile;
             }
         });
+        if (deferred) loadVisibleCovers(cards, poster);
         cards.setOnItemClickListener((parent, view, index, id) -> {
             screen.selection = index;
             JSONObject item = videos.get(index);
@@ -1158,6 +1391,64 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         });
         addGrid(body, cards);
         return cards;
+    }
+
+    private int tileEdge(GridView cards, int columns, boolean portrait) {
+        int width = Math.max(cards.getWidth(), body.getWidth());
+        int count = ui.gridColumns(columns, width);
+        int column = (width - Math.max(0, count - 1) * ui.px(18)) / count;
+        return art.tileEdge(column, portrait);
+    }
+
+    private void loadVisibleCovers(GridView cards, boolean useArtworkTint) {
+        final int generation = backdropGeneration;
+        Runnable load = new Runnable() {
+            private boolean tintPending = useArtworkTint;
+
+            @Override public void run() {
+                if (disposed || cards != grid || !cards.isShown()) return;
+                boolean offeredTint = false;
+                for (int i = 0; i < cards.getChildCount(); i++) {
+                    BoxTile tile = (BoxTile) cards.getChildAt(i);
+                    String url = tile.coverUrl();
+                    if (!tintPending || offeredTint || url.isEmpty()) {
+                        tile.loadCover(art);
+                        continue;
+                    }
+                    offeredTint = true;
+                    tile.loadCover(art, bitmap -> {
+                        if (!tintPending || cards != grid || generation != backdropGeneration) return;
+                        tintPending = false;
+                        updateAmbient("grid\n" + url, generation, bitmap);
+                    });
+                }
+            }
+        };
+        cards.setRecyclerListener(view -> ((BoxTile) view).releaseCover(art));
+        cards.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            private int state, first = -1, count;
+            private void schedule(boolean moved) {
+                cards.removeCallbacks(load);
+                if (state == SCROLL_STATE_IDLE) cards.postDelayed(load, moved ? 220L : 150L);
+            }
+            @Override public void onScrollStateChanged(android.widget.AbsListView list, int next) {
+                state = next;
+                if (cards == grid && next != SCROLL_STATE_IDLE) cancelCategoryPrefetch();
+                schedule(true);
+                if (cards == grid && next == SCROLL_STATE_IDLE) scheduleCategoryPrefetch();
+            }
+            @Override public void onScroll(android.widget.AbsListView list, int firstVisible, int visible, int total) {
+                if (first == firstVisible && count == visible) return;
+                boolean moved = first >= 0 && first != firstVisible;
+                if (moved && cards == grid) {
+                    cancelCategoryPrefetch();
+                    if (state == SCROLL_STATE_IDLE) scheduleCategoryPrefetch();
+                }
+                first = firstVisible;
+                count = visible;
+                schedule(moved);
+            }
+        });
     }
 
     private JSONObject filterValues(BoxSource.Site site, String category, JSONObject filters) throws Exception {
@@ -1236,19 +1527,15 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void detail(BoxSource.Site site, JSONObject item, boolean direct) {
+        if (direct) {
+            playFromCard(site, item);
+            return;
+        }
         Tab from = screen.tab;
         load("正在加载详情…", () -> {
             String cacheKey=siteKey(site)+"\ndetail\n"+item.optString("vod_id");JSONObject data=pages.get(cacheKey);
             if(data==null){source.select(site);data=source.detail(item.optString("vod_id"));}
             JSONArray list = data.optJSONArray("list");
-            if (direct) {
-                List<PlayLine> lines = firstPlayableDetails(site, list, item.optString("vod_id"));
-                JSONObject response = data;
-                return () -> {
-                    pages.put(cacheKey, response);
-                    lines.get(0).episodes.get(0).action.run();
-                };
-            }
             JSONObject video = list == null ? null : list.optJSONObject(0);
             if (video == null) {
                 source.select(site);
@@ -1270,18 +1557,41 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         });
     }
 
-    private List<PlayLine> firstPlayableDetails(BoxSource.Site site, JSONArray items, String id) throws IOException {
-        List<PlayLine> fallback = null;
-        for (int i = 0; items != null && i < items.length(); i++) {
-            JSONObject video = items.optJSONObject(i);
-            if (video == null) continue;
-            List<PlayLine> lines = playLines(site, video);
-            if (lines.isEmpty()) continue;
-            if (id.equals(video.optString("vod_id"))) return lines;
-            if (fallback == null) fallback = lines;
-        }
-        if (fallback != null) return fallback;
-        throw new IOException("站点没有返回可播放内容");
+    private void playFromCard(BoxSource.Site site, JSONObject item) {
+        Screen owner = screen;
+        String id = item.optString("vod_id");
+        String title = videoName(item);
+        List<PlayLine> supplied = playLines(site, item);
+        load("正在获取播放线路…", () -> {
+            String key = siteKey(site) + "\ndetail\n" + id;
+            JSONObject data = pages.get(key);
+            if (data == null) {
+                source.select(site);
+                data = source.detail(id);
+            }
+            List<PlayLine> routes = supplied;
+            JSONArray list = data.optJSONArray("list");
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject video = list.optJSONObject(i);
+                if (video == null || !(list.length() == 1 || id.equals(video.optString("vod_id"))
+                        || title.equals(videoName(video)))) continue;
+                List<PlayLine> details = playLines(site, video);
+                if (!details.isEmpty()) routes = details;
+                if (id.equals(video.optString("vod_id")) || !details.isEmpty()) break;
+            }
+            RoutePlayback attempt = new RoutePlayback(owner, title, routes, 0, 0);
+            JSONObject response = data;
+            return () -> {
+                if (screen != owner) return;
+                pages.put(key, response);
+                if (attempt.lines.isEmpty()) showRouteFailure(attempt, "站点没有返回可播放线路");
+                else startPlayback(attempt, false, true);
+            };
+        }, reason -> {
+            RoutePlayback attempt = new RoutePlayback(owner, title, supplied, 0, 0);
+            if (supplied.isEmpty()) showRouteFailure(attempt, reason);
+            else startPlayback(attempt, false, true);
+        });
     }
 
     private static boolean music(BoxSource.Site site, JSONObject video) {
@@ -1290,12 +1600,15 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void detailPage(BoxSource.Site site, JSONObject video, String image, List<PlayLine> lines, int[] selected, boolean music) {
+        String title = videoName(video);
         if (!music) {
-            if (currentSite != null) categoryHeader(currentSite, "");
-            Runnable start = lines.isEmpty() ? () -> message("站点没有提供播放线路") : lines.get(selected[0]).episodes.get(0).action;
+            ((View) heading.getParent()).setVisibility(View.GONE);
             LinearLayout episodes = ui.vertical();
-            body.addView(new BoxPageLayout(ui,featurePanel(site,video,"▶  开始播放",start),episodes),new LinearLayout.LayoutParams(-1,0,1));
-            if (lines.isEmpty()) message("站点没有提供播放线路"); else episodePanel(episodes, lines, selected, false);
+            if (lines.isEmpty()) episodes.setVisibility(View.GONE);
+            body.addView(new BoxPageLayout(ui, featurePanel(site, video, image), episodes),
+                    new LinearLayout.LayoutParams(-1, 0, 1));
+            if (lines.isEmpty()) message("站点没有提供播放线路");
+            else episodePanel(episodes, title, lines, selected, false);
             return;
         }
         LinearLayout about = ui.horizontal(), info = ui.vertical(), playback = ui.vertical();
@@ -1347,16 +1660,16 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         details.addView(playback, new LinearLayout.LayoutParams(-1, 0, 1));
         body.addView(details, new LinearLayout.LayoutParams(-1, 0, 1));
         if (lines.isEmpty()) message("站点没有提供播放线路");
-        else episodePanel(playback, lines, selected, music);
+        else episodePanel(playback, title, lines, selected, music);
     }
 
-    private static String sharedArtist(List<Choice> items) {
+    private static String sharedArtist(List<Episode> items) {
         if (items.size() < 3) return "";
         String first = items.get(0).title;
         int separator = first.indexOf(" - ");
         if (separator < 1 || separator > 40) return "";
         String prefix = first.substring(0, separator + 3);
-        for (Choice item : items) if (!item.title.startsWith(prefix)) return "";
+        for (Episode item : items) if (!item.title.startsWith(prefix)) return "";
         return first.substring(0, separator).trim();
     }
 
@@ -1372,6 +1685,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         String[] flags = video.optString("vod_play_from").split("\\$\\$\\$", -1);
         String[] routes = video.optString("vod_play_url").split("\\$\\$\\$", -1);
         List<PlayLine> lines = new ArrayList<>();
+        String videoTitle = videoName(video);
+        boolean music = music(site, video);
         int episodeCount = 0;
         for (int i = 0; i < Math.min(24, routes.length) && episodeCount < 500; i++) {
             String flag = i < flags.length ? flags[i] : "";
@@ -1382,9 +1697,8 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 String name = delimiter < 0 ? "播放" : entry.substring(0, delimiter);
                 String id = delimiter < 0 ? entry : entry.substring(delimiter + 1);
                 if (id.trim().isEmpty()) continue;
-                String title = music(site, video) ? BlUi.plain(name) : videoName(video) + " · " + name;
-                int index = line.episodes.size();
-                line.episodes.add(new Choice(name, () -> play(site, flag, id, title, line, index)));
+                String title = music ? BlUi.plain(name) : videoTitle + " · " + name;
+                line.episodes.add(new Episode(site, name, flag, id, title));
                 if (++episodeCount >= 500) break;
             }
             if (!line.episodes.isEmpty()) lines.add(line);
@@ -1392,7 +1706,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         return lines;
     }
 
-    private void episodePanel(LinearLayout parent, List<PlayLine> lines, int[] selected, boolean music) {
+    private void episodePanel(LinearLayout parent, String title, List<PlayLine> lines, int[] selected, boolean music) {
         LinearLayout header = ui.horizontal(), channels = ui.horizontal(), panel = ui.vertical();
         TextView section=ui.title(music?"歌曲":"选集");
         section.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,ui.px(26));
@@ -1402,43 +1716,83 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         header.addView(count, new LinearLayout.LayoutParams(-2, -2));
         header.addView(new View(context),new LinearLayout.LayoutParams(0,1,1));
         channels.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);header.addView(channels,new LinearLayout.LayoutParams(-2,-2));
-        LinearLayout.LayoutParams headerSize=new LinearLayout.LayoutParams(-1,ui.px(56));headerSize.bottomMargin=ui.px(12);parent.addView(header,headerSize);
+        if (!music) header.setPadding(ui.px(4), 0, ui.px(4), 0);
+        LinearLayout.LayoutParams headerSize = new LinearLayout.LayoutParams(-1, ui.px(music ? 56 : 48));
+        headerSize.bottomMargin = ui.px(music ? 12 : 8);
+        parent.addView(header, headerSize);
         TextView fullTitle = ui.text("", 17, BlUi.SUB);
         fullTitle.setSingleLine(true); fullTitle.setEllipsize(TextUtils.TruncateAt.MARQUEE);
         fullTitle.setMarqueeRepeatLimit(-1); fullTitle.setSelected(true);
         fullTitle.setVisibility(music?View.VISIBLE:View.GONE);
         parent.addView(fullTitle, new LinearLayout.LayoutParams(-1, ui.px(40)));
         parent.addView(panel, new LinearLayout.LayoutParams(-1, 0, 1));
-        Runnable bind = () -> {
-            List<Choice> episodes = lines.get(selected[0]).episodes;
-            boolean files=false;if(!music)for(Choice item:episodes)if(BoxEpisodeLabel.file(item.title))files=true;
-            section.setText(music?"歌曲":files?"播放文件":"选集");
-            count.setText((music?"":"共 ")+episodes.size() + (music ? " 首" : files?" 个":" 集"));
-            panel.removeAllViews();
-            episodeChoices(panel, episodes, music, fullTitle);
-        };
-        String route="线路 · "+lines.get(selected[0]).name;
-        if(lines.size()>1){
-            Screen owner=screen;
-            Button choose=action(channels,route+"  ▾",()->{
-                List<Choice> routes=new ArrayList<>();
-                for(int i=0;i<lines.size();i++){int index=i;routes.add(new Choice((index==selected[0]?"✓  ":"")+lines.get(index).name,()->{
-                    selected[0]=index;owner.selection=0;if(!history.isEmpty()&&history.peek()==owner)history.pop();show(owner,false);
-                }));}
-                show(new Screen(owner.tab,"选择播放线路",false,()->choices(body,routes,3,64)),true);
-            });
-            choose.setMaxWidth(ui.px(320));choose.setEllipsize(TextUtils.TruncateAt.END);choose.setContentDescription("切换播放线路");
-        }else{
-            TextView name=ui.text(route,20,BoxUi.SUB);name.setSingleLine(true);name.setEllipsize(TextUtils.TruncateAt.END);name.setMaxWidth(ui.px(320));channels.addView(name);
+        boolean multiple = lines.size() > 1;
+        TextView route;
+        if (multiple) {
+            Button choose = ui.button("");
+            Drawable chevron = ui.navigationIcon(11);
+            chevron.setBounds(0, 0, ui.px(18), ui.px(18));
+            choose.setCompoundDrawables(null, null, chevron, null);
+            choose.setCompoundDrawablePadding(ui.px(9));
+            choose.setContentDescription("切换播放线路");
+            route = choose;
+        } else {
+            route = ui.text("", 20, BoxUi.SUB);
         }
+        route.setSingleLine(true);
+        route.setEllipsize(TextUtils.TruncateAt.END);
+        route.setMaxWidth(ui.px(300));
+        channels.addView(route, new LinearLayout.LayoutParams(-2, -2));
+
+        Runnable bind = () -> {
+            PlayLine line = lines.get(selected[0]);
+            route.setText("线路 · " + line.name);
+            boolean files = false;
+            if (!music) for (Episode item : line.episodes) if (BoxEpisodeLabel.file(item.title)) files = true;
+            section.setText(music ? "歌曲" : files ? "播放文件" : "选集");
+            count.setText((music ? "" : "共 ") + line.episodes.size()
+                    + (music ? " 首" : files ? " 个" : " 集"));
+            panel.removeAllViews();
+            GridView options = episodeChoices(panel, line.episodes, music, fullTitle, index ->
+                    startPlayback(new RoutePlayback(screen, title, lines, selected[0], index), false, false));
+            if (multiple) {
+                options.setOnKeyListener((view, code, event) -> {
+                    if (code != KeyEvent.KEYCODE_DPAD_UP || event.getAction() != KeyEvent.ACTION_DOWN
+                            || options.getSelectedItemPosition() >= options.getNumColumns()) return false;
+                    return route.requestFocus();
+                });
+                route.setOnKeyListener((view, code, event) -> {
+                    if (code != KeyEvent.KEYCODE_DPAD_DOWN || event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                    options.requestFocusFromTouch();
+                    options.setSelection(Math.min(screen.selection, options.getCount() - 1));
+                    return true;
+                });
+            }
+        };
+        if (multiple) route.setOnClickListener(view -> {
+            Screen owner = screen;
+            List<Choice> routes = new ArrayList<>();
+            for (int index = 0; index < lines.size(); index++) {
+                int position = index;
+                routes.add(new Choice((position == selected[0] ? "✓  " : "") + lines.get(position).name, () -> {
+                    if (screen != owner || position == selected[0]) return;
+                    selected[0] = position;
+                    owner.selection = 0;
+                    bind.run();
+                    focusContent();
+                }));
+            }
+            openHomeMenu("选择播放线路", routes, null, selected[0]);
+        });
         bind.run();
     }
 
-    private void episodeChoices(LinearLayout parent, List<Choice> items, boolean music, TextView fullTitle) {
+    private GridView episodeChoices(LinearLayout parent, List<Episode> items, boolean music, TextView fullTitle,
+            OpenEpisode open) {
         boolean longNames = music;
         boolean fileNames=false;
-        for (Choice item : items) if (item.title.codePointCount(0, item.title.length()) > 14) longNames = true;
-        if(!music)for(Choice item:items)if(BoxEpisodeLabel.file(item.title))fileNames=true;
+        for (Episode item : items) if (item.title.codePointCount(0, item.title.length()) > 14) longNames = true;
+        if(!music)for(Episode item:items)if(BoxEpisodeLabel.file(item.title))fileNames=true;
         final boolean files=fileNames;
         final int columns = files?1:longNames ? 3 : 6, minWidth = files?1:longNames ? 230 : 110;
         String artist = music ? sharedArtist(items) : "";
@@ -1452,22 +1806,24 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         };
         options.setNumColumns(columns); options.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
         options.setHorizontalSpacing(ui.px(10)); options.setVerticalSpacing(ui.px(10));
-        options.setPadding(ui.px(4), ui.px(4), ui.px(4), ui.px(16)); options.setClipToPadding(false);
-        options.setSelector(ui.capsuleSelector()); options.setDrawSelectorOnTop(true);
+        options.setPadding(ui.px(4), ui.px(4), ui.px(4), ui.px(files ? 8 : 16));
+        options.setClipToPadding(false);
+        options.setSelector(files ? ui.selector() : ui.capsuleSelector());
+        options.setDrawSelectorOnTop(true);
         options.setAdapter(new BaseAdapter() {
             public int getCount() { return items.size(); }
-            public Choice getItem(int position) { return items.get(position); }
+            public Episode getItem(int position) { return items.get(position); }
             public long getItemId(int position) { return position; }
             public View getView(int position, View reuse, ViewGroup container) {
                 LinearLayout item = reuse instanceof LinearLayout ? (LinearLayout) reuse : ui.horizontal();
                 if (reuse == null) {
-                    item.setPadding(ui.px(files?22:12), ui.px(files?14:9), ui.px(files?22:12), ui.px(files?14:9));
-                    item.setMinimumHeight(ui.px(files?90:columns == 3 ? 76 : 60));
-                    item.setBackgroundDrawable(ui.rowGlass(item));
+                    item.setPadding(ui.px(files ? 18 : 12), ui.px(9), ui.px(files ? 18 : 12), ui.px(9));
+                    item.setMinimumHeight(ui.px(files ? 72 : columns == 3 ? 76 : 60));
+                    item.setBackgroundDrawable(files ? ui.glass(0x65313e47, 16) : ui.rowGlass(item));
                     TextView number = ui.text("", 15, BoxUi.SUB);
                     number.setTextColor(ui.episodeText());number.setDuplicateParentStateEnabled(true);
-                    number.setVisibility(columns==6?View.GONE:View.VISIBLE);
-                    item.addView(number, new LinearLayout.LayoutParams(ui.px(files?44:34), -1));
+                    number.setVisibility(columns == 6 || files && items.size() == 1 ? View.GONE : View.VISIBLE);
+                    item.addView(number, new LinearLayout.LayoutParams(ui.px(files ? 36 : 34), -1));
                     LinearLayout labels=ui.vertical();
                     TextView name = ui.text("", 22, BlUi.TEXT);
                     name.setTextColor(ui.episodeText());
@@ -1475,10 +1831,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     name.setGravity((columns==6?Gravity.CENTER:Gravity.LEFT)|Gravity.CENTER_VERTICAL);
                     name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END);
                     labels.addView(name,new LinearLayout.LayoutParams(-1,-2));
-                    TextView facts=ui.text("",17,BoxUi.SUB);facts.setPadding(0,ui.px(6),0,0);facts.setSingleLine(true);facts.setEllipsize(TextUtils.TruncateAt.END);labels.addView(facts,new LinearLayout.LayoutParams(-1,-2));
+                    TextView facts=ui.text("",files ? 16 : 17,BoxUi.SUB);facts.setPadding(0,ui.px(4),0,0);facts.setSingleLine(true);facts.setEllipsize(TextUtils.TruncateAt.END);labels.addView(facts,new LinearLayout.LayoutParams(-1,-2));
                     item.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+                    if (files) {
+                        ImageView play = new ImageView(context);
+                        play.setImageDrawable(ui.navigationIcon(7));
+                        LinearLayout.LayoutParams icon = new LinearLayout.LayoutParams(ui.px(22), ui.px(22));
+                        icon.leftMargin = ui.px(16);
+                        item.addView(play, icon);
+                    }
                 }
-                Choice choice = getItem(position);
+                Episode choice = getItem(position);
                 ((TextView) item.getChildAt(0)).setText(String.format(java.util.Locale.US, "%02d", position + 1));
                 LinearLayout labels=(LinearLayout)item.getChildAt(1);BoxEpisodeLabel label=BoxEpisodeLabel.of(choice.title);
                 ((TextView)labels.getChildAt(0)).setText(files?label.title:prefix.isEmpty() ? choice.title : choice.title.substring(prefix.length()));
@@ -1494,19 +1857,22 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             public void onNothingSelected(AdapterView<?> owner) { }
         });
         options.setOnItemClickListener((owner, view, position, id) -> {
-            screen.selection = position; items.get(position).action.run();
+            screen.selection = position;
+            open.open(position);
         });
         if(files)options.setOnItemLongClickListener((owner,view,position,id)->{new android.app.AlertDialog.Builder(context).setTitle("完整文件名").setMessage(items.get(position).title).setPositiveButton("关闭",null).show();return true;});
         fullTitle.setText(items.get(Math.min(screen.selection, items.size() - 1)).title);
         addGrid(parent, options);
+        return options;
     }
 
-    private void play(BoxSource.Site site, String flag, String id, String title, PlayLine line, int index) {
+    private void startPlayback(RoutePlayback attempt, boolean fromPlayer, boolean offerRoutesOnFailure) {
+        Episode episode = attempt.lines.get(attempt.selected).episodes.get(attempt.episode);
         cloudLoginAction = null;
         authorizationFeedbackUntil = 0;
         load("正在解析播放地址…", () -> {
-            source.select(site);
-            JSONObject result = source.play(flag, id);
+            source.select(episode.site);
+            JSONObject result = source.play(episode.flag, episode.id);
             JSONObject headers = result.optJSONObject("header");
             if (headers == null && result.opt("header") instanceof String && !result.optString("header").trim().isEmpty()) {
                 headers = new JSONObject(result.optString("header"));
@@ -1522,35 +1888,74 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             if (dash && !(host instanceof ChannelPlugin.PlayerUiHost)) {
                 return () -> compatibilityToast("播放 DASH 需要更新 nTv");
             }
+            if (offerRoutesOnFailure && !dash && !hostReportsVodFailures()) browseHttp.checkPlayback(address, mediaHeaders);
             return () -> {
+                if (screen != attempt.owner) return;
+                if (dash && fromPlayer && dashPlayer == null && !container.isShown() && !stopHostVod()) {
+                    compatibilityToast("切换到 DASH 线路需要更新 nTv");
+                    return;
+                }
                 if (dashPlayer != null) closeDashPlayer();
-                playbackLine = line;
-                playbackEpisode = index;
+                playback = attempt;
+                attempt.failed.remove(attempt.selected);
                 if (dash) {
                     try {
                         dashPlayer = new BoxDashPlayer(ui, (ChannelPlugin.PlayerUiHost) host, http,
-                                source, url, mediaHeaders, title, () -> {
+                                source, url, mediaHeaders, episode.playerTitle, () -> {
                                     if (!showEpisodes()) closeDashPlayer();
+                                }, attempt.lines.size() > 1 ? this::showPlaybackRoutes : null, reason -> {
+                                    closeDashPlayer();
+                                    showRouteFailure(attempt, reason);
                                 });
                         root.setVisibility(View.GONE);
                         container.addView(dashPlayer, new FrameLayout.LayoutParams(-1, -1));
                     } catch (RuntimeException | LinkageError error) {
                         closeDashPlayer();
-                        message("DASH 播放初始化失败 · " + error.getClass().getSimpleName());
+                        playback = null;
+                        showRouteFailure(attempt, "DASH 播放初始化失败");
                     }
                 } else {
-                    try { host.playVod(url, mediaHeaders, title); }
+                    try { host.playVod(url, mediaHeaders, episode.playerTitle); }
                     catch (LinkageError olderHost) { host.playVod(url, mediaHeaders); }
                 }
             };
+        }, offerRoutesOnFailure ? reason -> showRouteFailure(attempt, reason) : null);
+    }
+
+    private boolean hostReportsVodFailures() {
+        try { return host.reportsVodPlaybackFailures(); }
+        catch (LinkageError olderHost) { return false; }
+    }
+
+    private boolean stopHostVod() {
+        try { return host.stopVod(); }
+        catch (LinkageError olderHost) { return false; }
+    }
+
+    @Override public boolean onVodPlaybackFailed(String reason) {
+        RoutePlayback attempt = playback;
+        if (disposed || attempt == null || screen != attempt.owner) return false;
+        playback = null;
+        main.post(() -> {
+            if (pending == null) showRouteFailure(attempt, reason);
         });
+        return true;
+    }
+
+    @Override public boolean hasPlaybackRoutes() {
+        return !disposed && playback != null && screen == playback.owner && playback.lines.size() > 1;
+    }
+
+    @Override public void showPlaybackRoutes() {
+        if (hasPlaybackRoutes() && pending == null) openPlaybackRoutes(playback, null);
     }
 
     @Override public boolean showEpisodes() {
-        if (disposed || !(context instanceof Activity) || playbackLine == null) return false;
+        if (disposed || !(context instanceof Activity) || playback == null) return false;
         if (episodeDialog != null) return true;
-        PlayLine line = playbackLine;
-        int playing = playbackEpisode;
+        RoutePlayback current = playback;
+        PlayLine line = current.lines.get(current.selected);
+        int playing = current.episode;
         Dialog dialog = new Dialog(context);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
@@ -1564,11 +1969,17 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         TextView heading = ui.text("选集", 24, BlUi.TEXT);
         heading.setPadding(ui.px(14), 0, ui.px(14), 0);
         panel.addView(heading, new LinearLayout.LayoutParams(-1, ui.px(42)));
+        LinearLayout summary = ui.horizontal();
         TextView route = ui.text(line.name + "  ·  " + line.episodes.size() + " 项", 16, BoxUi.SUB);
         route.setSingleLine(true);
         route.setEllipsize(TextUtils.TruncateAt.END);
         route.setPadding(ui.px(14), 0, ui.px(14), 0);
-        panel.addView(route, new LinearLayout.LayoutParams(-1, ui.px(34)));
+        summary.addView(route, new LinearLayout.LayoutParams(0, -1, 1));
+        if (hasPlaybackRoutes()) action(summary, "切换线路", () -> {
+            dialog.dismiss();
+            showPlaybackRoutes();
+        });
+        panel.addView(summary, new LinearLayout.LayoutParams(-1, ui.px(42)));
 
         int rowHeight = ui.px(46);
         ListView options = new ListView(context);
@@ -1578,7 +1989,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         options.setContentDescription("剧集列表");
         options.setAdapter(new BaseAdapter() {
             @Override public int getCount() { return line.episodes.size(); }
-            @Override public Choice getItem(int position) { return line.episodes.get(position); }
+            @Override public Episode getItem(int position) { return line.episodes.get(position); }
             @Override public long getItemId(int position) { return position; }
             @Override public View getView(int position, View reuse, ViewGroup parent) {
                 LinearLayout row = reuse instanceof LinearLayout ? (LinearLayout) reuse : ui.horizontal();
@@ -1601,7 +2012,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         });
         options.setOnItemClickListener((parent, row, position, id) -> {
             dialog.dismiss();
-            if (position != playing) line.episodes.get(position).action.run();
+            if (position != playing) startPlayback(current.at(current.selected, position), true, true);
         });
         int listHeight = Math.min(line.episodes.size() * rowHeight,
                 Math.min(ui.px(360), Math.max(rowHeight, container.getHeight() - ui.px(144))));
@@ -1635,14 +2046,25 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         dashPlayer.close();
         container.removeView(dashPlayer);
         dashPlayer = null;
+        playback = null;
         root.setVisibility(View.VISIBLE);
         focusContent();
     }
 
     private void choices(LinearLayout parent, List<Choice> items, int columns, int height) {
         if (items.isEmpty()) return;
+        GridView options = choiceGrid(items, columns, height, false);
+        options.setOnItemClickListener((container, view, index, id) -> {
+            screen.selection = index;
+            items.get(index).action.run();
+        });
+        addGrid(parent, options);
+    }
+
+    private GridView choiceGrid(List<Choice> items, int columns, int height, boolean inPopup) {
         GridView options = ui.grid(columns);
-        options.setHorizontalSpacing(ui.px(12));options.setVerticalSpacing(ui.px(10));
+        options.setHorizontalSpacing(ui.px(12));
+        options.setVerticalSpacing(ui.px(CHOICE_ROW_GAP));
         options.setSelector(ui.capsuleSelector());
         options.setAdapter(new BaseAdapter() {
             @Override public int getCount() { return items.size(); }
@@ -1652,22 +2074,20 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                 TextView item = reuse instanceof TextView ? (TextView) reuse : ui.text("", 22, BlUi.TEXT);
                 if (reuse == null) {
                     item.setGravity(Gravity.CENTER);
-                    item.setPadding(ui.px(12), ui.px(8), ui.px(12), ui.px(8));
-                    item.setMinHeight(ui.px(height));
+                    int verticalPadding = ui.px(inPopup ? 4 : 8);
+                    item.setPadding(ui.px(12), verticalPadding, ui.px(12), verticalPadding);
+                    if (inPopup) item.setHeight(ui.px(height));
+                    else item.setMinHeight(ui.px(height));
                     item.setCompoundDrawables(null,null,null,null);
                     item.setMaxLines(2);
                     item.setEllipsize(TextUtils.TruncateAt.END);
-                    item.setBackgroundDrawable(ui.rowGlass(item));
+                    item.setBackgroundDrawable(inPopup ? ui.capsuleGlass(0x353d4a56) : ui.rowGlass(item));
                 }
                 item.setText(getItem(position).title);
                 return item;
             }
         });
-        options.setOnItemClickListener((container, view, index, id) -> {
-            screen.selection = index;
-            items.get(index).action.run();
-        });
-        addGrid(parent, options);
+        return options;
     }
 
     private void addGrid(LinearLayout parent, GridView content) {
@@ -1702,7 +2122,71 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             switchTab(Tab.SITES);
             return;
         }
-        openHomeMenu("切换站点", stations.stationChoices, null, true);
+        if (stationPicker != null || pending != null) return;
+        Screen stationScreen = stations;
+        List<Choice> items = stationScreen.stationChoices;
+        int horizontalMargin = ui.px(34);
+        int top = ui.px(76);
+        int inset = ui.px(18);
+        int headerHeight = ui.px(48);
+        int panelWidth = container.getWidth() - 2 * horizontalMargin;
+        int maxGridHeight = container.getHeight() - top - horizontalMargin - 2 * inset - headerHeight;
+        if (maxGridHeight < ui.px(64) || panelWidth < ui.px(210)) {
+            switchTab(Tab.SITES);
+            return;
+        }
+
+        FrameLayout overlay = new FrameLayout(context);
+        overlay.setBackgroundColor(0xbf03070b);
+        overlay.setOnClickListener(view -> closeStationPicker());
+        overlay.setFocusable(false);
+        LinearLayout panel = ui.vertical();
+        panel.setClickable(true);
+        panel.setFocusable(false);
+        panel.setPadding(inset, inset, inset, inset);
+        panel.setBackgroundDrawable(ui.glass(0xff101820, 24));
+        TextView title = ui.title("切换站点");
+        title.setPadding(ui.px(5), 0, 0, 0);
+        panel.addView(title, new LinearLayout.LayoutParams(-1, headerHeight));
+
+        int rowHeight = ui.px(64);
+        int rowGap = ui.px(CHOICE_ROW_GAP);
+        GridView options = choiceGrid(items, 4, 64, true);
+        int verticalInset = ui.px(8);
+        options.setPadding(options.getPaddingLeft(), verticalInset, options.getPaddingRight(), verticalInset);
+        options.setClipToPadding(true);
+        options.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
+        int columns = ui.gridColumns(4, panelWidth - 2 * inset);
+        int rows = (items.size() + columns - 1) / columns;
+        int gridPadding = options.getPaddingTop() + options.getPaddingBottom();
+        int visibleRows = Math.min(rows, Math.max(1, (maxGridHeight - gridPadding + rowGap) / (rowHeight + rowGap)));
+        int gridHeight = visibleRows * (rowHeight + rowGap) - rowGap + gridPadding;
+        panel.addView(options, new LinearLayout.LayoutParams(-1, Math.min(maxGridHeight, gridHeight)));
+        options.setOnItemClickListener((parent, view, index, id) -> {
+            stationScreen.selection = index;
+            closeStationPicker();
+            items.get(index).action.run();
+        });
+
+        FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(panelWidth, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        position.topMargin = top;
+        overlay.addView(panel, position);
+        stationPicker = overlay;
+        if (homePage != null) homePage.setRotationPaused(true);
+        root.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        container.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+        options.requestFocusFromTouch();
+        options.setSelection(Math.min(stationScreen.selection, items.size() - 1));
+    }
+
+    private boolean closeStationPicker() {
+        if (stationPicker == null) return false;
+        container.removeView(stationPicker);
+        stationPicker = null;
+        root.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
+        homeSite.requestFocus();
+        if (homePage != null) homePage.setRotationPaused(false);
+        return true;
     }
 
     private void openFavorites() {
@@ -1735,12 +2219,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
             toast("已移除收藏");
             openFavorites();
             return true;
-        }, false);
+        }, 0);
     }
 
     private interface Hold { boolean run(int index); }
 
-    private void openHomeMenu(String label, List<Choice> items, Hold hold, boolean stationPicker) {
+    private void openHomeMenu(String label, List<Choice> items, Hold hold, int selection) {
         if (homeMenu != null) homeMenu.dismiss();
         Dialog menu = new Dialog(context);
         menu.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -1778,22 +2262,136 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         menu.setContentView(panel);
         menu.setOnDismissListener(dialog -> { if (homeMenu == menu) homeMenu = null; });
         Window window = menu.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(0));
-            if (stationPicker) {
-                window.setGravity(Gravity.TOP | Gravity.LEFT);
-                WindowManager.LayoutParams params = window.getAttributes();
-                params.x = ui.px(34);
-                params.y = ui.px(68);
-                window.setAttributes(params);
-            }
-        }
+        if (window != null) window.setBackgroundDrawable(new ColorDrawable(0));
         homeMenu = menu;
         menu.show();
-        if (window != null) window.setLayout(Math.min(container.getWidth() - ui.px(70),
-                ui.px(stationPicker ? 400 : 570)), -2);
+        if (window != null) window.setLayout(Math.min(container.getWidth() - ui.px(70), ui.px(570)), -2);
         list.requestFocusFromTouch();
-        list.setSelection(0);
+        list.setSelection(selection);
+    }
+
+    private void showRouteFailure(RoutePlayback attempt, String reason) {
+        attempt.failed.add(attempt.selected);
+        openPlaybackRoutes(attempt, reason == null ? "当前线路无法播放" : reason);
+    }
+
+    private void openPlaybackRoutes(RoutePlayback attempt, String reason) {
+        if (disposed || screen != attempt.owner || !(context instanceof Activity)) return;
+        RoutePlayback active = playback;
+        boolean fromPlayer = active != null && active.lines == attempt.lines
+                && (dashPlayer != null || !container.isShown());
+        if (!fromPlayer && !root.isShown()) return;
+        if (homeMenu != null) homeMenu.dismiss();
+
+        Dialog menu = new Dialog(context);
+        menu.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout panel = ui.vertical();
+        panel.setPadding(ui.px(24), ui.px(22), ui.px(24), ui.px(20));
+        GradientDrawable surface = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xfc2e2923, 0xff171719});
+        surface.setCornerRadius(ui.px(22));
+        surface.setStroke(Math.max(1, ui.px(1)), 0x887c6549);
+        panel.setBackgroundDrawable(surface);
+        TextView name = ui.text(attempt.title, 20, BoxUi.SUB);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        panel.addView(name);
+        TextView title = ui.title(attempt.lines.isEmpty() ? "暂时无法播放" : "选择线路");
+        title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ui.px(35));
+        title.setTextColor(0xfffff0d9);
+        panel.addView(title, new LinearLayout.LayoutParams(-1, ui.px(58)));
+        if (reason != null) {
+            String detail = reason.replaceAll("(?i)https?://\\S+", "播放地址");
+            TextView status = ui.text(detail, 18, 0xffdfc0a1);
+            status.setMaxLines(2);
+            status.setEllipsize(TextUtils.TruncateAt.END);
+            panel.addView(status);
+        }
+
+        ListView routes = new ListView(context);
+        routes.setContentDescription("播放线路");
+        routes.setDivider(null);
+        GradientDrawable focus = ui.fill(0x33f4dfbd, 12);
+        focus.setStroke(Math.max(1, ui.px(2)), 0xfff4dfbd);
+        routes.setSelector(focus);
+        routes.setDrawSelectorOnTop(true);
+        routes.setAdapter(new BaseAdapter() {
+            @Override public int getCount() { return attempt.lines.size(); }
+            @Override public PlayLine getItem(int index) { return attempt.lines.get(index); }
+            @Override public long getItemId(int index) { return index; }
+            @Override public View getView(int index, View previous, ViewGroup parent) {
+                LinearLayout row = previous instanceof LinearLayout ? (LinearLayout) previous : ui.horizontal();
+                if (previous == null) {
+                    row.setPadding(ui.px(16), 0, ui.px(14), 0);
+                    row.setLayoutParams(new android.widget.AbsListView.LayoutParams(-1, ui.px(58)));
+                    TextView label = ui.text("", 23, BoxUi.TEXT);
+                    label.setSingleLine(true);
+                    label.setEllipsize(TextUtils.TruncateAt.END);
+                    row.addView(label, new LinearLayout.LayoutParams(0, -1, 1));
+                    row.addView(ui.text("", 17, 0xffddaa81), new LinearLayout.LayoutParams(-2, -1));
+                }
+                TextView label = (TextView) row.getChildAt(0);
+                label.setText(getItem(index).name);
+                TextView marker = (TextView) row.getChildAt(1);
+                boolean playing = fromPlayer && index == active.selected;
+                marker.setText(playing ? "正在播放" : attempt.failed.contains(index) ? "播放失败" : "");
+                marker.setTextColor(playing ? 0xffbad8b2 : 0xffddaa81);
+                return row;
+            }
+        });
+        routes.setOnItemClickListener((parent, row, index, id) -> {
+            if (screen != attempt.owner || pending != null) return;
+            if (fromPlayer && index == active.selected) {
+                menu.dismiss();
+                return;
+            }
+            RoutePlayback current = fromPlayer ? active : attempt;
+            int episode = current.matchingEpisode(index);
+            if (episode < 0) {
+                toast("该线路没有当前剧集");
+                return;
+            }
+            menu.dismiss();
+            startPlayback(attempt.at(index, episode), fromPlayer, true);
+        });
+        if (!attempt.lines.isEmpty()) {
+            LinearLayout.LayoutParams listSize = new LinearLayout.LayoutParams(-1, 0, 1);
+            listSize.topMargin = ui.px(16);
+            panel.addView(routes, listSize);
+        }
+        LinearLayout buttons = ui.horizontal();
+        buttons.setGravity(Gravity.RIGHT);
+        Button back = action(buttons, "返回", menu::dismiss);
+        panel.addView(buttons, new LinearLayout.LayoutParams(-1, ui.px(56)));
+        menu.setContentView(panel);
+        menu.setOnDismissListener(dialog -> {
+            if (homeMenu == menu) homeMenu = null;
+        });
+        homeMenu = menu;
+        menu.show();
+        Window window = menu.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(0));
+            window.setDimAmount(.58f);
+            window.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.x = ui.px(18);
+            window.setAttributes(params);
+            window.setLayout(Math.min(ui.px(470), Math.max(1, container.getWidth() - ui.px(36))),
+                    attempt.lines.isEmpty() ? -2 : Math.min(ui.px(640), Math.max(1, container.getHeight() - ui.px(44))));
+        }
+        if (attempt.lines.isEmpty()) back.requestFocus();
+        else {
+            int next = attempt.selected;
+            if (reason != null) {
+                for (int i = 0; i < attempt.lines.size(); i++) {
+                    next = (next + 1) % attempt.lines.size();
+                    if (!attempt.failed.contains(next) && (!fromPlayer || next != active.selected)) break;
+                }
+            }
+            routes.requestFocusFromTouch();
+            routes.setSelection(next);
+        }
     }
 
     private void toast(String text) {
@@ -1818,6 +2416,19 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void show(Screen next, boolean push) {
+        cancelCategoryPrefetch();
+        if (grid != null) {
+            for (int i = 0; i < grid.getChildCount(); i++) {
+                View card = grid.getChildAt(i);
+                if (card instanceof BoxTile) ((BoxTile) card).releaseCover(art);
+            }
+        }
+        art.clear(backdropArt);
+        art.cancelFrost();
+        backdropKey = "";
+        backdropGeneration++;
+        if (next.tab != Tab.HOME || !next.landing) closeStationPicker();
+        playback = null;
         cancelHomePreview();
         if(screen!=null&&screen!=next)cancelRecommendations();
         if (screen != null && screen != next) cancelSearch(screen.search);
@@ -1835,10 +2446,15 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         homeSite.setText(currentSite == null ? "站点  ⌄" : shortSiteName(currentSite.site.name) + "  ⌄");
         ambientBackdrop();
         if (next.tab == Tab.SITES) stations = next;
+        ((View) heading.getParent()).setVisibility(View.VISIBLE);
         heading.setText(next.title);
         heading.setVisibility(View.VISIBLE);
         categoryTabs.setVisibility(View.GONE);
-        categoryButtons.removeAllViews();
+        if (next.tab == Tab.SITES) {
+            categoryButtons.removeAllViews();
+            headerSite = null;
+            headerCategories = null;
+        }
         message("");
         actions.removeAllViews();
         body.removeAllViews();
@@ -1848,43 +2464,68 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         grid = null;
         primary = null;
         next.render.run();
+        scheduleCategoryPrefetch();
+        if (stationPicker != null && homePage != null) homePage.setRotationPaused(true);
         focusContent();
         root.post(()->{if(!disposed&&screen==next&&root.isShown()&&dashPlayer==null)focusContent();});
     }
 
     private void ambientBackdrop() {
         backdropArt.setVisibility(View.GONE);
-        backdropShade.setBackgroundDrawable(BoxBackdrop.scrim(false));
-        backdropShade.setVisibility(View.VISIBLE);
+        displayAmbient(false);
     }
 
     private void backdrop(List<String> urls,boolean cinema) {
         if(cinema){
             backdropArt.setVisibility(View.VISIBLE);
-            backdropShade.setBackgroundDrawable(BoxBackdrop.scrim(true));
-            backdropShade.setVisibility(View.VISIBLE);
+            displayAmbient(true);
         }else ambientBackdrop();
-        int edge = cinema ? Math.min(1440, Math.round(Math.max(context.getResources().getDisplayMetrics().widthPixels,
-                context.getResources().getDisplayMetrics().heightPixels) * 1.25f)) : art.thumbnailEdge();
+        android.util.DisplayMetrics display = context.getResources().getDisplayMetrics();
+        int viewport = Math.max(display.widthPixels, display.heightPixels);
+        int edge = cinema ? KITKAT ? Math.min(800, viewport) : Math.min(1440, Math.round(viewport * 1.25f))
+                : art.thumbnailEdge();
         String key = cinema + "\n" + edge + "\n" + TextUtils.join("\n", urls);
         if (key.equals(backdropKey) && backdropArt.getDrawable() != null) return;
         backdropKey = key;
         int request = ++backdropGeneration;
         if (cinema && urls.isEmpty()) {
             ambientArt.setTag(null);
-            ambientArt.setImageDrawable(null);
+            ambientBlur = null;
+            browsingScene = null;
+            controlGlass.image(null);
+            displayAmbient(true);
         }
-        BoxArt.Ready ready = bitmap -> {
-            if (key.equals(ambientArt.getTag())) return;
-            art.frost(bitmap, blurred -> {
-                if (disposed || request != backdropGeneration) return;
-                ambientArt.setTag(key);
-                ambientArt.setImageBitmap(blurred);
-                controlGlass.image(blurred);
-            });
-        };
+        BoxArt.Ready ready = bitmap -> updateAmbient(key, request, bitmap);
         if (cinema) art.loadBackdrop(backdropArt, urls, edge, ready);
         else art.load(backdropArt, urls.isEmpty() ? "" : urls.get(0), edge, ready);
+    }
+
+    private void displayAmbient(boolean cinema) {
+        cinemaScene = cinema;
+        boolean combined = KITKAT && !cinema && browsingScene != null;
+        Bitmap bitmap = combined ? browsingScene : ambientBlur;
+        if (shownAmbient != bitmap) {
+            shownAmbient = bitmap;
+            ambientArt.setImageBitmap(bitmap);
+        }
+        if (!combined) {
+            Drawable shade = cinema ? cinemaShade : browsingShade;
+            if (backdropShade.getBackground() != shade) backdropShade.setBackgroundDrawable(shade);
+        }
+        backdropShade.setVisibility(combined ? View.GONE : View.VISIBLE);
+    }
+
+    private void updateAmbient(String key, int request, Bitmap bitmap) {
+        if (request != backdropGeneration || key.equals(ambientArt.getTag())) return;
+        art.frost(bitmap, blurred -> {
+            if (disposed || request != backdropGeneration) return;
+            ambientArt.setTag(key);
+            ambientBlur = blurred;
+            if (KITKAT) browsingScene = BoxBackdrop.browsingScene(blurred,
+                    Math.max(1, container.getWidth()), Math.max(1, container.getHeight()));
+            controlGlass.image(blurred);
+            displayAmbient(cinemaScene);
+        });
     }
 
     private void saveSelection() {
@@ -1894,13 +2535,15 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void focusContent() {
+        if (stationPicker != null) return;
         if (homePage != null && homePage.focusFeature()) {
             return;
         } else if (primary != null && primary != grid && primary.isShown() && primary.requestFocusFromTouch()) {
             return;
         } else if (grid != null && grid.isShown() && grid.getCount() > 0) {
-            grid.requestFocusFromTouch();
-            grid.setSelection(Math.min(screen.selection, grid.getCount() - 1));
+            if (!grid.hasFocus()) grid.requestFocusFromTouch();
+            int position = Math.min(screen.selection, grid.getCount() - 1);
+            if (grid.getSelectedItemPosition() != position) grid.setSelection(position);
         } else {
             if (homeSite.isShown()) homeSite.requestFocus();
             else if (categoryTabs.isShown() && categoryButtons.getChildCount() > 0)
@@ -1910,7 +2553,12 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     private void load(String title, Load operation) {
+        load(title, operation, null);
+    }
+
+    private void load(String title, Load operation, Submit onFailure) {
         if (disposed || pending != null) return;
+        cancelCategoryPrefetch();
         int request = ++generation;
         pending = worker.submit(() -> {
             try {
@@ -1925,13 +2573,18 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
                     if (disposed || generation != request) return;
                     finishLoading();
                     String compatibility = unsupportedAndroid(error);
+                    String detail = error instanceof IOException ? error.getMessage() : error.getClass().getSimpleName();
+                    if (onFailure != null) {
+                        onFailure.accept(compatibility != null ? compatibility :
+                                detail == null ? "播放地址加载失败" : detail);
+                        return;
+                    }
                     if (compatibility != null) {
                         compatibilityToast(compatibility);
                         return;
                     }
-                    String detail = error instanceof IOException ? error.getMessage() : error.getClass().getSimpleName();
                     message("加载失败 · " + (detail == null ? "请检查站点" : detail));
-                    if (!root.isShown() && playbackLine != null) host.status(status.getText().toString());
+                    if (!root.isShown() && playback != null) host.status(status.getText().toString());
                 });
             }
         });
@@ -2023,6 +2676,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
 
     private void finishLoading() {
         pending = null;
+        scheduleCategoryPrefetch();
         Dialog dialog = loadingDialog;
         loadingDialog = null;
         if (dialog != null) dialog.dismiss();
@@ -2104,6 +2758,7 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     @Override public boolean onBack() {
+        if (closeStationPicker()) return true;
         if (pending != null) {
             cancelPending();
             return true;
@@ -2128,12 +2783,16 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     }
 
     @Override public void setActive(boolean active) {
-        if (!active) cancelHomePreview();
+        if (!active) {
+            cancelHomePreview();
+            cancelCategoryPrefetch();
+        }
         if (dashPlayer != null) dashPlayer.setActive(active);
         else if(active)main.post(()->{
             if (!disposed && root.isShown()) {
                 if (homePage != null) homePage.restartRotation();
                 if (root.findFocus() == null) focusContent();
+                scheduleCategoryPrefetch();
             }
         });
     }
@@ -2142,6 +2801,9 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
     @Override public void dispose() {
         if (disposed) return;
         disposed = true;
+        cancelCategoryPrefetch();
+        categoryWorker.shutdownNow();
+        closeStationPicker();
         if (homeMenu != null) homeMenu.dismiss();
         if (episodeDialog != null) episodeDialog.dismiss();
         if (screen != null) cancelSearch(screen.search);
@@ -2155,7 +2817,6 @@ public final class TvBoxPlugin implements ChannelPlugin, ChannelPlugin.NativePag
         if (pending != null) cancelPending();
         homeLoads.shutdownNow();
         if (art != null) art.close();
-        if (ui != null) ui.close();
         main.removeCallbacksAndMessages(null);
         worker.execute(() -> { if (source != null) source.close(); });
         worker.shutdown();

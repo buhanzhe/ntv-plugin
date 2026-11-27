@@ -15,6 +15,13 @@ final class BoxBackdrop extends ImageView {
     private Bitmap current;
     private int width,height;
     BoxBackdrop(Context context,float radius){super(context);this.radius=radius;}
+    @Override public void setImageDrawable(Drawable drawable) {
+        super.setImageDrawable(drawable);
+        if (drawable == null) {
+            current = null;
+            if (paint != null) paint.setShader(null);
+        }
+    }
     @Override protected void onDraw(Canvas canvas){
         if(!(getDrawable() instanceof BitmapDrawable))return;
         Bitmap bitmap=((BitmapDrawable)getDrawable()).getBitmap();if(bitmap==null||bitmap.isRecycled())return;
@@ -37,6 +44,23 @@ final class BoxBackdrop extends ImageView {
         }
         canvas.drawRoundRect(area,radius,radius,paint);
     }
+
+    static Bitmap browsingScene(Bitmap image, int viewportWidth, int viewportHeight) {
+        int edge = Math.max(viewportWidth, viewportHeight);
+        int width = Math.max(1, Math.round(128f * viewportWidth / edge));
+        int height = Math.max(1, Math.round(128f * viewportHeight / edge));
+        Bitmap shaded = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(shaded);
+        float scale = Math.max((float) width / image.getWidth(), (float) height / image.getHeight());
+        float halfWidth = image.getWidth() * scale / 2, halfHeight = image.getHeight() * scale / 2;
+        canvas.drawBitmap(image, null, new RectF(width / 2f - halfWidth, height / 2f - halfHeight,
+                width / 2f + halfWidth, height / 2f + halfHeight), new Paint(Paint.FILTER_BITMAP_FLAG));
+        Drawable gradient = scrim(false);
+        gradient.setBounds(0, 0, width, height);
+        gradient.draw(canvas);
+        return shaded;
+    }
+
     static Drawable scrim(boolean cinema){return new Drawable(){
         final Paint paint=new Paint(Paint.DITHER_FLAG);Shader horizontal,vertical;
         protected void onBoundsChange(Rect bounds){

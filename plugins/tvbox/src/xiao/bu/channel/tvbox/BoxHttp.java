@@ -92,6 +92,18 @@ final class BoxHttp {
         return client.newBuilder().callTimeout(4, TimeUnit.SECONDS).build().newCall(request.build()).execute();
     }
 
+    void checkPlayback(HttpUrl address, JSONObject headers) throws Exception {
+        try (Response response = probeMedia(address, headers)) {
+            if (!response.isSuccessful()) throw new IOException("线路暂不可用（HTTP " + response.code() + "）");
+            ResponseBody body = response.body();
+            if (body == null || body.contentLength() == 0) throw new IOException("线路没有返回媒体内容");
+            MediaType type = body.contentType();
+            if (type != null && ("html".equals(type.subtype()) || "json".equals(type.subtype()))) {
+                throw new IOException("线路返回了网页或接口提示");
+            }
+        }
+    }
+
     Response openMedia(HttpUrl address, JSONObject headers, Map<String, String> options) throws Exception {
         return mediaCall(address, headers, options).execute();
     }

@@ -35,6 +35,7 @@ import xiao.bu.tv.jar.ChannelPlugin;
 
 /** Standard MPD playback using BL's ExoPlayer core and the shared nTv HTTP transport. */
 final class BoxDashPlayer extends FrameLayout {
+    interface Failure { void failed(String reason); }
     private final SimpleExoPlayer player;
     private final DefaultTrackSelector selector;
     private final TextureView surface;
@@ -48,7 +49,7 @@ final class BoxDashPlayer extends FrameLayout {
     private int width, height;
 
     BoxDashPlayer(BlUi ui, ChannelPlugin.PlayerUiHost host, BoxHttp http, BoxSource source,
-                  String url, JSONObject headers, String title, Runnable episodes) {
+                  String url, JSONObject headers, String title, Runnable episodes, Runnable routes, Failure onFailure) {
         super(ui.context);
         setBackgroundColor(0xff000000);
         setContentDescription("TVBox 播放器");
@@ -81,6 +82,8 @@ final class BoxDashPlayer extends FrameLayout {
             public String title() { return title; }
             public boolean hasEpisodes() { return true; }
             public void episodes() { episodes.run(); }
+            public boolean hasRoutes() { return routes != null; }
+            public void routes() { if (routes != null) routes.run(); }
             public String quality() { return height>0?width+"×"+height:""; }
             public org.json.JSONArray trackOptions() { return BoxDashPlayer.this.trackOptions(); }
             public void selectTrack(String id) { BoxDashPlayer.this.selectTrack(id); }
@@ -123,6 +126,10 @@ final class BoxDashPlayer extends FrameLayout {
                 android.util.Log.w("TvBoxDash", "Playback failed, type=" + error.type);
                 failure = error.type == ExoPlaybackException.TYPE_SOURCE
                         ? "播放线路读取失败，请返回选集重试" : "设备无法解码当前音视频轨，请切换线路";
+                if (onFailure != null) {
+                    post(() -> { if (!closed) onFailure.failed(failure); });
+                    return;
+                }
                 controls.show();
             }
         });

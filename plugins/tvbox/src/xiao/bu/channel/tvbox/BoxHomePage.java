@@ -1,12 +1,14 @@
 package xiao.bu.channel.tvbox;
 
 import android.text.TextUtils;
+import android.graphics.drawable.Drawable;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.widget.FrameLayout;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -38,11 +40,13 @@ final class BoxHomePage extends FrameLayout {
     private final Actions actions;
     private final LinearLayout feature;
     private final TextView title, facts, description, hint, counter;
+    private final Button play;
     private final ImageButton previous, next;
     private final Runnable rotate = this::rotateFeature;
     private final Runnable hold = this::playHeldItem;
     private int selected;
     private int heldPosition = -1;
+    private boolean rotationPaused;
 
     BoxHomePage(BoxUi ui, List<Item> items, int initial, Actions actions) {
         super(ui.context);
@@ -64,15 +68,25 @@ final class BoxHomePage extends FrameLayout {
 
         feature = ui.vertical();
         title = ui.displayTitle("");
-        title.getPaint().setFakeBoldText(true);
         title.setTextColor(BoxUi.HOME_GOLD);
         title.setShadowLayer(ui.px(8), 0, ui.px(2), 0xa0000000);
+        title.setGravity(Gravity.LEFT | Gravity.BOTTOM);
         title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
         feature.addView(title, new LinearLayout.LayoutParams(-1, -2));
         facts = featureLabel(22, 1, BoxUi.TEXT, 22);
         description = featureLabel(25, 2, BoxUi.TEXT, 12);
         hint = featureLabel(18, 1, BoxUi.SUB, 24);
+        play = ui.homeButton("开始播放", true);
+        Drawable icon = ui.navigationIcon(7);
+        icon.setBounds(0, 0, ui.px(22), ui.px(22));
+        play.setCompoundDrawables(icon, null, null, null);
+        play.setCompoundDrawablePadding(ui.px(8));
+        play.setOnClickListener(view -> actions.play(selected));
+        play.setFocusable(false);
+        LinearLayout.LayoutParams playSize = new LinearLayout.LayoutParams(-2, ui.px(49));
+        playSize.topMargin = ui.px(22);
+        feature.addView(play, playSize);
 
         LayoutParams featureSize = new LayoutParams(-2, -2, Gravity.LEFT | Gravity.BOTTOM);
         featureSize.leftMargin = ui.px(items.size() > 1 ? 72 : 30);
@@ -124,8 +138,10 @@ final class BoxHomePage extends FrameLayout {
         int width = MeasureSpec.getSize(widthSpec), height = MeasureSpec.getSize(heightSpec);
         LayoutParams textArea = (LayoutParams) feature.getLayoutParams();
         textArea.width = Math.min(Math.round(width * .60f), ui.px(740));
-        int titleSize = Math.min(ui.px(98), Math.round(height * .17f)) - ui.px(2);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(1, titleSize));
+        int titleSize = Math.max(1, Math.min(ui.px(91), Math.round(height * .155f)));
+        if (title.getTextSize() != titleSize) title.setTextSize(TypedValue.COMPLEX_UNIT_PX, titleSize);
+        // Reserve two line boxes at every viewport size so long recommendations do not move the text below.
+        title.getLayoutParams().height = 2 * title.getLineHeight();
         super.onMeasure(widthSpec, heightSpec);
     }
 
@@ -136,12 +152,14 @@ final class BoxHomePage extends FrameLayout {
         facts.setText(item.facts);
         facts.setVisibility(item.facts.isEmpty() ? GONE : VISIBLE);
         updateDescription(position, item.description);
-        hint.setText(item.playable ? "长按 OK 播放" : "按 OK 打开");
+        hint.setText("按 OK 打开");
+        hint.setVisibility(item.playable ? GONE : VISIBLE);
+        play.setVisibility(item.playable ? VISIBLE : GONE);
         int total = items.size();
         counter.setText((position + 1) + " / " + total);
         previous.setVisibility(position > 0 ? VISIBLE : GONE);
         next.setVisibility(position + 1 < total ? VISIBLE : GONE);
-        setContentDescription(item.name + "，" + hint.getText());
+        setContentDescription(item.name + (item.playable ? "，按 OK 播放" : "，按 OK 打开"));
         actions.select(position);
     }
 
@@ -177,7 +195,8 @@ final class BoxHomePage extends FrameLayout {
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             boolean click = heldPosition == selected && !event.isCanceled();
             cancelHold();
-            if (click) performClick();
+            if (click && items.get(selected).playable) play.performClick();
+            else if (click) performClick();
             restartRotation();
         }
         return true;
@@ -208,9 +227,14 @@ final class BoxHomePage extends FrameLayout {
 
     void restartRotation() {
         removeCallbacks(rotate);
-        if (items.size() > 1 && heldPosition < 0 && isShown() && hasWindowFocus()) {
+        if (!rotationPaused && items.size() > 1 && heldPosition < 0 && isShown() && hasWindowFocus()) {
             postDelayed(rotate, ROTATION_MS);
         }
+    }
+
+    void setRotationPaused(boolean paused) {
+        rotationPaused = paused;
+        restartRotation();
     }
 
     @Override public void onWindowFocusChanged(boolean focused) {

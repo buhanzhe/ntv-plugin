@@ -24,27 +24,22 @@ import xiao.bu.channel.bl.BlUi;
 final class BoxUi extends BlUi {
     static final int TEXT = 0xfff4f8ff, SUB = 0xffb8cbe1, ACCENT = 0xffe7f6ff;
     static final int HOME_GOLD = 0xffffdfa7;
-    private final BoxTypography typography;
     private BoxGlass material;
     void material(BoxGlass value){material=value;}
-    Drawable primaryFocus(Button button){return material==null?primaryFocus():material.control(button,px(28),2);}
     android.content.res.ColorStateList controlText(){
         return android.content.res.ColorStateList.valueOf(TEXT);
     }
-    BoxUi(Context context,ClassLoader assets,okhttp3.OkHttpClient transport) {
-        super(context);
-        typography=new BoxTypography(context,transport);
-    }
+    BoxUi(Context context) { super(context); }
     TextView displayTitle(String value) {
-        TextView t=text(value,80,TEXT);typography.title(t);
-        t.setLineSpacing(px(6),1f);return t;
+        TextView title = text(value, 80, TEXT);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        title.setLineSpacing(px(6), 1f);
+        return title;
     }
-    void close(){typography.close();}
-    void displayCaption(TextView view){typography.title(view);}
 
     @Override public TextView text(String value, int size, int color) {
         TextView t=super.text(value, size, color == BlUi.SUB ? SUB : color == BlUi.TEXT ? TEXT : color);
-        t.setTypeface(android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL));
+        t.setTypeface(android.graphics.Typeface.DEFAULT);
         t.getPaint().setSubpixelText(true);return t;
     }
 
@@ -82,32 +77,14 @@ final class BoxUi extends BlUi {
         return states;
     }
 
-    StateListDrawable primaryFocus() {
-        StateListDrawable states=new StateListDrawable();
-        GradientDrawable focused=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xe6b7c4cf,0xc6788897,0xdd425665});
-        focused.setCornerRadius(px(28));focused.setStroke(Math.max(2,px(2)),0xfff6fcff);
-        states.addState(new int[]{android.R.attr.state_focused},focused);
-        GradientDrawable normal=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xcca2b2bf,0xaa607384,0xbb344a5c});
-        normal.setCornerRadius(px(28));normal.setStroke(Math.max(1,px(1)),0x99dae9f4);states.addState(new int[]{},normal);return states;
-    }
-
     Button categoryButton(String value) {
         return categoryButton(value, false);
     }
 
     Button categoryButton(String value, boolean home) {
-        Button b = new Button(context) {
-            private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
-            @Override protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                if (isSelected()) {
-                    line.setColor(home ? HOME_GOLD : TEXT); line.setStrokeWidth(Math.max(2, px(3))); line.setStrokeCap(Paint.Cap.ROUND);
-                    canvas.drawLine(px(16), getHeight()-px(4), getWidth()-px(16), getHeight()-px(4), line);
-                }
-            }
-        };
-        b.setText(value); b.setTextColor(TEXT); b.setAllCaps(false);
-        if (home) b.setTextColor(new android.content.res.ColorStateList(
+        Button b = new Button(context);
+        b.setText(value); b.setAllCaps(false);
+        b.setTextColor(new android.content.res.ColorStateList(
                 new int[][]{{android.R.attr.state_selected}, {}}, new int[]{HOME_GOLD, TEXT}));
         b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(home ? 24 : 28));
         b.setGravity(Gravity.CENTER);
@@ -118,8 +95,32 @@ final class BoxUi extends BlUi {
         int inset = px(home ? 11 : 18);
         b.setPadding(inset, 0, inset, 0); b.setMinWidth(0); b.setMinimumWidth(0);
         StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_focused, android.R.attr.state_selected}, categoryIndicator(true));
+        states.addState(new int[]{android.R.attr.state_selected}, categoryIndicator(false));
         states.addState(new int[]{android.R.attr.state_focused}, capsuleGlass(0x66566e83));
         states.addState(new int[]{}, fill(0x00000000, 0)); b.setBackgroundDrawable(states); return b;
+    }
+
+    private Drawable categoryIndicator(boolean focused) {
+        GradientDrawable surface = focused ? capsuleGlass(0x66566e83) : fill(0, 0);
+        return new Drawable() {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final android.graphics.RectF indicator = new android.graphics.RectF();
+            @Override public void draw(Canvas canvas) {
+                Rect bounds = getBounds();
+                surface.setBounds(bounds);
+                surface.draw(canvas);
+                float halfWidth = Math.min(px(23), bounds.width() / 3f);
+                float bottom = bounds.bottom - px(3);
+                paint.setColor(HOME_GOLD);
+                indicator.set(bounds.exactCenterX() - halfWidth, bottom - px(3),
+                        bounds.exactCenterX() + halfWidth, bottom);
+                canvas.drawRoundRect(indicator, px(2), px(2), paint);
+            }
+            @Override public void setAlpha(int alpha) { surface.setAlpha(alpha); }
+            @Override public void setColorFilter(ColorFilter filter) { surface.setColorFilter(filter); }
+            @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+        };
     }
 
     Button homeButton(String label, boolean capsule) {
@@ -161,10 +162,14 @@ final class BoxUi extends BlUi {
         EditText e = super.editor(hint, value); e.setTextColor(TEXT); e.setHintTextColor(SUB); return e;
     }
 
+    int gridColumns(int columns, int width) {
+        return Math.max(1, Math.min(columns, width / px(columns >= 5 ? 170 : 210)));
+    }
+
     @Override public GridView grid(int columns) {
         GridView g = new GridView(context) {
             @Override protected void onMeasure(int width, int height) {
-                int count = Math.max(1, Math.min(columns, MeasureSpec.getSize(width) / px(columns >= 5 ? 170 : 210)));
+                int count = gridColumns(columns, MeasureSpec.getSize(width));
                 if (MeasureSpec.getSize(width) > 0 && getNumColumns() != count) setNumColumns(count);
                 super.onMeasure(width, height);
             }
@@ -175,7 +180,7 @@ final class BoxUi extends BlUi {
         g.setSelector(selector()); g.setDrawSelectorOnTop(true); return g;
     }
 
-    public ImageView imageView() { return new BoxImage(context,px(20)); }
+    public BoxImage imageView() { return new BoxImage(context,px(20)); }
 
     Drawable navigationIcon(int kind) { return icon(kind,false); }
     Drawable actionIcon(int kind) { return icon(kind,true); }
